@@ -1,1 +1,1 @@
-web: gunicorn -k eventlet -w 1 chatbox:app
+web: gunicorn chatbox:app

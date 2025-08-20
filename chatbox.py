@@ -1,10 +1,11 @@
 from flask import Flask, render_template, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import uuid
+import os
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "secret!"
-socketio = SocketIO(app)
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "secret!")  # safer for Render
+socketio = SocketIO(app, cors_allowed_origins="*")  # allow external connections
 
 # ----------------------------
 # Routes
@@ -54,7 +55,7 @@ def handle_message(data):
     emit("message", {"user_id": user_id, "msg": msg}, room=user_id)
 
 # ----------------------------
-# Main
+# Main (for local dev only)
 # ----------------------------
 
 if __name__ == "__main__":
