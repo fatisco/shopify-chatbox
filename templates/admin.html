@@ -30,7 +30,6 @@
     </form>
   </div>
 
-  <!-- Notification sound -->
   <audio id="notifySound">
     <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
   </audio>
@@ -38,8 +37,13 @@
   <script>
     const socket = io();
     const params = new URLSearchParams(window.location.search);
-    const customerId = params.get("room") || "general"; // Admin joins a specific room
-    socket.emit("join", { room: customerId });
+    const customerId = params.get("room");
+
+    if (!customerId) {
+      alert("No room specified. Use ?room=ROOMID");
+    } else {
+      socket.emit("join", { room: customerId });
+    }
 
     const form = document.getElementById('form');
     const input = document.getElementById('input');
@@ -50,11 +54,11 @@
     // Receive messages
     socket.on("message", data => {
       const item = document.createElement("div");
-      item.classList.add("msg", data.sender === "Admin" ? "admin" : "customer");
-      item.textContent = data.sender + ": " + data.message;
+      item.classList.add("msg", data.from === "admin" ? "admin" : "customer");
+      item.textContent = data.message;
       messages.appendChild(item);
       messages.scrollTop = messages.scrollHeight;
-      if (data.sender !== "Admin") notifySound.play();
+      if (data.from === "customer") notifySound.play();
     });
 
     // Typing indicator
@@ -66,15 +70,17 @@
     // Send message
     form.addEventListener("submit", e => {
       e.preventDefault();
-      if (input.value) {
-        socket.emit("message", { room: customerId, sender: "Admin", message: input.value });
+      if (input.value && customerId) {
+        socket.emit("message", { room: customerId, message: input.value, from: "admin" });
         input.value = "";
       }
     });
 
     // Emit typing
     input.addEventListener("input", () => {
-      socket.emit("typing", { room: customerId, message: "Admin is typing..." });
+      if (customerId) {
+        socket.emit("typing", { room: customerId, message: "Admin is typing..." });
+      }
     });
   </script>
 </body>

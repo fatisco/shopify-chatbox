@@ -30,14 +30,13 @@
     </form>
   </div>
 
-  <!-- Notification sound -->
   <audio id="notifySound">
     <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
   </audio>
 
   <script>
     const socket = io();
-    const customerId = "{{ customer_id }}"; // Flask injects ID
+    const customerId = "{{ room_id }}";  // Flask injects this
     socket.emit("join", { room: customerId });
 
     const form = document.getElementById('form');
@@ -49,11 +48,11 @@
     // Receive messages
     socket.on("message", data => {
       const item = document.createElement("div");
-      item.classList.add("msg", data.sender === "Admin" ? "admin" : "customer");
-      item.textContent = data.sender + ": " + data.message;
+      item.classList.add("msg", data.from === "customer" ? "customer" : "admin");
+      item.textContent = data.message;
       messages.appendChild(item);
       messages.scrollTop = messages.scrollHeight;
-      if (data.sender !== "Customer") notifySound.play();
+      if (data.from === "admin") notifySound.play();
     });
 
     // Typing indicator
@@ -66,7 +65,7 @@
     form.addEventListener("submit", e => {
       e.preventDefault();
       if (input.value) {
-        socket.emit("message", { room: customerId, sender: "Customer", message: input.value });
+        socket.emit("message", { room: customerId, message: input.value, from: "customer" });
         input.value = "";
       }
     });
