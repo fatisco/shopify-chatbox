@@ -20,15 +20,8 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 # ----------------------------
 @app.route("/")
 def index():
-    return """
-    <h2>Chatbox is running!</h2>
-    <p>Use /admin?room=customer_id for admin</p>
-    <p>Use /customer/&lt;customer_id&gt; for customer</p>
-    """
-
-@app.route("/customer/<customer_id>")
-def customer(customer_id):
-    return render_template("customer.html", customer_id=customer_id)
+    # Single landing route
+    return render_template("landing.html")
 
 # ----------------------------
 # Socket.IO events
@@ -39,10 +32,6 @@ def on_join(data):
     join_room(room)
     emit("message", {"sender": "System", "message": f"{room} joined the chat"}, room=room)
 
-@app.route("/")
-def index():
-    return render_template("landing.html")
-
 @socketio.on("leave")
 def on_leave(data):
     room = data["room"]
@@ -51,16 +40,18 @@ def on_leave(data):
 
 @socketio.on("message")
 def handle_message(data):
-    room = data.get("room", "general")
+    room = data.get("room")
     sender = data.get("sender", "Unknown")
     message = data.get("message", "")
-    emit("message", {"sender": sender, "message": message}, room=room)
+    if room:
+        emit("message", {"sender": sender, "message": message}, room=room)
 
 @socketio.on("typing")
 def handle_typing(data):
-    room = data.get("room", "general")
+    room = data.get("room")
     message = data.get("message", "")
-    emit("typing", {"message": message}, room=room)
+    if room:
+        emit("typing", {"message": message}, room=room)
 
 # ----------------------------
 # Main
