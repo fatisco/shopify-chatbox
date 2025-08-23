@@ -2,39 +2,76 @@
 <html>
 <head>
   <title>Admin Chat</title>
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f9f9f9; margin:0; }
+    #chat { max-width:600px; margin:auto; border:1px solid #ddd; height:80vh;
+            display:flex; flex-direction:column; background:white; border-radius:12px; }
+    #messages { flex:1; overflow-y:auto; padding:10px; }
+    .msg { margin:5px 0; padding:10px; border-radius:12px; max-width:75%; }
+    .admin { background:black; color:white; margin-left:auto; }
+    .customer { background:#e5e5e5; color:black; margin-right:auto; }
+    #typing { font-size:12px; color:gray; margin:5px 10px; }
+    #form { display:flex; border-top:1px solid #ddd; }
+    #input { flex:1; padding:10px; border:none; outline:none; }
+    button { padding:10px; border:none; background:#000; color:white; cursor:pointer; }
+  </style>
 </head>
 <body>
-  <h2>Admin Chat</h2>
-  <div id="chat"></div>
-  <input id="room" placeholder="Customer ID" />
-  <input id="message" autocomplete="off" />
-  <button onclick="sendMessage()">Send</button>
+  <div id="chat">
+    <div id="messages"></div>
+    <div id="typing"></div>
+    <form id="form">
+      <input id="input" autocomplete="off" placeholder="Type a message..." />
+      <button>Send</button>
+    </form>
+  </div>
 
-  <!-- Notification sound -->
-  <audio id="notif-sound" src="/static/notification.mp3" preload="auto"></audio>
+  <audio id="notifySound">
+    <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
+  </audio>
 
   <script>
     const socket = io();
+    const params = new URLSearchParams(window.location.search);
+    const customerId = params.get("room") || "general"; // admin must join a room
+    socket.emit("join", { room: customerId });
 
-    socket.on("message", (data) => {
-      const chat = document.getElementById("chat");
-      const msg = document.createElement("p");
-      msg.textContent = data.sender + ": " + data.message;
-      chat.appendChild(msg);
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
+    const messages = document.getElementById('messages');
+    const typingDiv = document.getElementById('typing');
+    const notifySound = document.getElementById('notifySound');
 
-      // Play sound if message is from Customer
-      if (data.sender === "Customer") {
-        document.getElementById("notif-sound").play();
+    // receive messages
+    socket.on("message", data => {
+      const item = document.createElement("div");
+      item.classList.add("msg", data.sender === "Admin" ? "admin" : "customer");
+      item.textContent = data.sender + ": " + data.message;
+      messages.appendChild(item);
+      messages.scrollTop = messages.scrollHeight;
+      if (data.sender !== "Admin") notifySound.play();
+    });
+
+    // typing indicator
+    socket.on("typing", data => {
+      typingDiv.textContent = data.message;
+      setTimeout(() => typingDiv.textContent = "", 2000);
+    });
+
+    // send message
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      if (input.value) {
+        socket.emit("message", { room: customerId, sender: "Admin", message: input.value });
+        input.value = "";
       }
     });
 
-    function sendMessage() {
-      const room = document.getElementById("room").value;
-      const input = document.getElementById("message");
-      socket.emit("message", { room: room, sender: "Admin", message: input.value });
-      input.value = "";
-    }
+    // emit typing
+    input.addEventListener("input", () => {
+      socket.emit("typing", { room: customerId, message: "Customer is typing..." });
+    });
   </script>
 </body>
 </html>
