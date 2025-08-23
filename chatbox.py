@@ -30,12 +30,6 @@ def index():
 def customer(customer_id):
     return render_template("customer.html", customer_id=customer_id)
 
-@app.route("/admin")
-def admin():
-    # admin joins a specific customer room via query param ?room=<id>
-    room = request.args.get("room", "general")
-    return render_template("admin.html", room=room)
-
 # ----------------------------
 # Socket.IO events
 # ----------------------------
