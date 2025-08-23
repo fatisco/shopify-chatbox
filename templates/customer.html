@@ -2,40 +2,35 @@
 <html>
 <head>
   <title>Customer Chat</title>
-  <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
-  <style>
-    body { font-family: Arial; }
-    #messages { border: 1px solid #ccc; height: 300px; overflow-y: scroll; margin-bottom: 10px; padding: 5px; }
-    #input { width: 80%; }
-  </style>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
   <h2>Customer Chat</h2>
-  <div id="messages"></div>
-  <input id="input" placeholder="Type a message..." />
+  <div id="chat"></div>
+  <input id="message" autocomplete="off" />
   <button onclick="sendMessage()">Send</button>
 
-  <audio id="ping" src="https://www.soundjay.com/buttons/sounds/button-3.mp3"></audio>
+  <!-- Notification sound -->
+  <audio id="notif-sound" src="/static/notification.mp3" preload="auto"></audio>
 
   <script>
     const socket = io();
-    const customer_id = "{{ customer_id }}";
-    const messages = document.getElementById("messages");
-    const ping = document.getElementById("ping");
-
-    socket.emit("join", { room: customer_id });
 
     socket.on("message", (data) => {
-      const div = document.createElement("div");
-      div.textContent = data.sender + ": " + data.message;
-      messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
-      ping.play(); // 🔔 notification sound
+      const chat = document.getElementById("chat");
+      const msg = document.createElement("p");
+      msg.textContent = data.sender + ": " + data.message;
+      chat.appendChild(msg);
+
+      // Play sound if message is from Admin
+      if (data.sender === "Admin") {
+        document.getElementById("notif-sound").play();
+      }
     });
 
     function sendMessage() {
-      const input = document.getElementById("input");
-      socket.emit("message", { sender: customer_id, message: input.value, room: customer_id });
+      const input = document.getElementById("message");
+      socket.emit("message", { sender: "Customer", message: input.value });
       input.value = "";
     }
   </script>

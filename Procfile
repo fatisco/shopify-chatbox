@@ -1,1 +1,1 @@
-web: gunicorn chatbox:app
+web: gunicorn --worker-class eventlet -w 1 chatbox:app
