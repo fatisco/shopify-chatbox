@@ -4,17 +4,20 @@
   <title>Customer Chat</title>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; background:#f9f9f9; margin:0; }
-    #chat { max-width:600px; margin:auto; border:1px solid #ddd; height:80vh;
-            display:flex; flex-direction:column; background:white; border-radius:12px; }
-    #messages { flex:1; overflow-y:auto; padding:10px; }
-    .msg { margin:5px 0; padding:10px; border-radius:12px; max-width:75%; }
+    body { font-family: Arial, sans-serif; background:#f9f9f9; margin:0; display:flex; justify-content:center; align-items:center; height:100vh; }
+    #chat { width:100%; max-width:600px; height:80vh; display:flex; flex-direction:column; background:white; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.1); overflow:hidden; }
+    #messages { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; }
+    .msg { margin:5px 0; padding:10px; border-radius:12px; max-width:75%; word-wrap: break-word; }
     .admin { background:black; color:white; margin-left:auto; }
     .customer { background:#e5e5e5; color:black; margin-right:auto; }
-    #typing { font-size:12px; color:gray; margin:5px 10px; }
+    #typing { font-size:12px; color:gray; margin:5px 10px; height:16px; }
     #form { display:flex; border-top:1px solid #ddd; }
-    #input { flex:1; padding:10px; border:none; outline:none; }
-    button { padding:10px; border:none; background:#000; color:white; cursor:pointer; }
+    #input { flex:1; padding:10px; border:none; outline:none; font-size:14px; }
+    button { padding:10px; border:none; background:#000; color:white; cursor:pointer; font-weight:bold; }
+    @media (max-width: 600px) {
+      #chat { height:90vh; }
+      .msg { max-width:85%; }
+    }
   </style>
 </head>
 <body>
@@ -27,6 +30,7 @@
     </form>
   </div>
 
+  <!-- Notification sound -->
   <audio id="notifySound">
     <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
   </audio>
@@ -42,7 +46,7 @@
     const typingDiv = document.getElementById('typing');
     const notifySound = document.getElementById('notifySound');
 
-    // receive messages
+    // Receive messages
     socket.on("message", data => {
       const item = document.createElement("div");
       item.classList.add("msg", data.sender === "Admin" ? "admin" : "customer");
@@ -52,13 +56,13 @@
       if (data.sender !== "Customer") notifySound.play();
     });
 
-    // typing indicator
+    // Typing indicator
     socket.on("typing", data => {
       typingDiv.textContent = data.message;
       setTimeout(() => typingDiv.textContent = "", 2000);
     });
 
-    // send message
+    // Send message
     form.addEventListener("submit", e => {
       e.preventDefault();
       if (input.value) {
@@ -67,9 +71,9 @@
       }
     });
 
-    // emit typing
+    // Emit typing
     input.addEventListener("input", () => {
-      socket.emit("typing", { room: customerId, message: "Admin is typing..." });
+      socket.emit("typing", { room: customerId, message: "Customer is typing..." });
     });
   </script>
 </body>
