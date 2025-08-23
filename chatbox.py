@@ -2,13 +2,17 @@ from flask import Flask, render_template
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder="templates")  # ensures templates are loaded
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "secret!")  # safe default
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # ----------------------------
 # Routes
 # ----------------------------
+
+@app.route("/")
+def index():
+    return "Chatbox is running! Use /admin or /customer/<customer_id>"
 
 @app.route("/customer/<customer_id>")
 def customer(customer_id):
@@ -24,22 +28,25 @@ def admin():
 
 @socketio.on("join")
 def on_join(data):
-    room = data["room"]
-    join_room(room)
-    emit("message", {"sender": "System", "message": f"{room} joined"}, room=room)
+    room = data.get("room")
+    if room:
+        join_room(room)
+        emit("message", {"sender": "System", "message": f"{room} joined"}, room=room)
 
 @socketio.on("leave")
 def on_leave(data):
-    room = data["room"]
-    leave_room(room)
-    emit("message", {"sender": "System", "message": f"{room} left"}, room=room)
+    room = data.get("room")
+    if room:
+        leave_room(room)
+        emit("message", {"sender": "System", "message": f"{room} left"}, room=room)
 
 @socketio.on("message")
 def handle_message(data):
-    room = data["room"]
-    sender = data["sender"]
-    message = data["message"]
-    emit("message", {"sender": sender, "message": message}, room=room)
+    room = data.get("room")
+    sender = data.get("sender", "Anonymous")
+    message = data.get("message", "")
+    if room and message:
+        emit("message", {"sender": sender, "message": message}, room=room)
 
 # ----------------------------
 # Main (for local dev only)
