@@ -1,8 +1,8 @@
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
-
 import eventlet
+
 eventlet.monkey_patch()
 
 app = Flask(__name__)
@@ -29,30 +29,35 @@ def customer(room_id):
 # ----------------------------
 @socketio.on("join")
 def on_join(data):
-    room = data["room"]
-    join_room(room)
-    # No system messages
+    """Join a specific chat room"""
+    room = data.get("room")
+    if room:
+        join_room(room)
 
 @socketio.on("leave")
 def on_leave(data):
-    room = data["room"]
-    leave_room(room)
-    # No system messages
-
-@socketio.on("message")
-def handle_message(data):
+    """Leave a specific chat room"""
     room = data.get("room")
-    message = data.get("message", "")
-    if room and message.strip():
-        # Only broadcast the plain message
-        emit("message", {"message": message}, room=room)
+    if room:
+        leave_room(room)
+
+@socketio.on("send_message")
+def handle_send_message(data):
+    """Send message to a specific room"""
+    room = data.get("room")
+    message = data.get("message", "").strip()
+    if room and message:
+        emit("receive_message", {"message": message}, room=room)
 
 @socketio.on("typing")
 def handle_typing(data):
+    """Notify typing status"""
     room = data.get("room")
-    message = data.get("message", "")
     if room:
-        emit("typing", {"message": message}, room=room)
+        emit("typing", data, room=room)
 
+# ----------------------------
+# Run App
+# ----------------------------
 if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
