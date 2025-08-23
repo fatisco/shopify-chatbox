@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Shopify Chatbox</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    h1 { margin-bottom: 40px; }
+    .btn {
+      padding: 15px 30px;
+      margin: 10px;
+      background: #000;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 10px;
+      font-size: 18px;
+      transition: background 0.3s;
+    }
+    .btn:hover { background: #333; }
+    input { padding: 10px; font-size: 16px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h1>Shopify Chatbox</h1>
+  <form id="customerForm">
+    <input type="text" id="customerId" placeholder="Enter Customer ID" required />
+    <button type="submit" class="btn">Go to Customer Chat</button>
+  </form>
+  <a href="/admin" class="btn">Go to Admin Chat</a>
+
+  <script>
+    const form = document.getElementById('customerForm');
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const id = document.getElementById('customerId').value.trim();
+      if (id) window.location.href = `/customer/${id}`;
+    });
+  </script>
+</body>
+</html>

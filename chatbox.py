@@ -45,6 +45,10 @@ def on_join(data):
     join_room(room)
     emit("message", {"sender": "System", "message": f"{room} joined the chat"}, room=room)
 
+@app.route("/")
+def index():
+    return render_template("landing.html")
+
 @socketio.on("leave")
 def on_leave(data):
     room = data["room"]
