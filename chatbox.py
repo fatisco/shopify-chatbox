@@ -23,6 +23,16 @@ def index():
     # Single landing route
     return render_template("landing.html")
 
+@app.route("/admin")
+def admin():
+    #Admin chat interface
+    return render_template("admin.html")
+
+@app.route("/customer/room_id>")
+def customer(room_id):
+    # Customer chat interface with unique room_id
+    return render_template("customer.html", room_id=room_id)
+
 # ----------------------------
 # Socket.IO events
 # ----------------------------
