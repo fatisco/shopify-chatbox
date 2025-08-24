@@ -9,11 +9,8 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "secret!")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-# ----------------------------
-# Active customers and chat history
-# ----------------------------
-active_customers = {}  # room_id: unread_count
-chat_history = {}      # room_id: list of {sender, message}
+# Track active customer rooms
+active_rooms = {}  # room_id: {'customers': [sid,...]}
 
 # ----------------------------
 # Routes
@@ -39,20 +36,13 @@ def on_join(data):
     user_type = data.get("user_type")  # "admin" or "customer"
     if room:
         join_room(room)
-
-        # Initialize chat history
-        if room not in chat_history:
-            chat_history[room] = []
-
-        # Send existing messages to the user who just joined
-        for msg in chat_history[room]:
-            emit("receive_message", msg, room=request.sid)
-
-        # Track active customers
         if user_type == "customer":
-            if room not in active_customers:
-                active_customers[room] = 0
-            emit("update_customers", active_customers, broadcast=True)
+            if room not in active_rooms:
+                active_rooms[room] = {'customers': []}
+            if request.sid not in active_rooms[room]['customers']:
+                active_rooms[room]['customers'].append(request.sid)
+            # Notify all admins about new active customer
+            emit("new_customer", {"room": room}, broadcast=True)
         elif user_type == "admin":
             emit("receive_message", {"message": f"✅ Admin joined room {room}", "sender": "admin"}, room=room)
 
@@ -61,28 +51,31 @@ def on_leave(data):
     room = data.get("room")
     if room:
         leave_room(room)
+        # Remove customer from active_rooms
+        for r in active_rooms:
+            if request.sid in active_rooms[r]['customers']:
+                active_rooms[r]['customers'].remove(request.sid)
 
 @socketio.on("send_message")
 def handle_send_message(data):
     room = data.get("room")
     message = data.get("message", "").strip()
-    sender = data.get("sender", "customer")
+    sender = data.get("sender", "Unknown")
     if room and message:
-        msg_data = {"message": message, "sender": sender, "room": room}
-        chat_history.setdefault(room, []).append(msg_data)  # Save message
-        emit("receive_message", msg_data, room=room)
-
-        # Increment unread count if customer sends
-        if sender == "customer":
-            if room in active_customers:
-                active_customers[room] += 1
-                emit("update_customers", active_customers, broadcast=True)
+        emit("receive_message", {"message": message, "sender": sender}, room=room)
 
 @socketio.on("typing")
 def handle_typing(data):
     room = data.get("room")
+    sender = data.get("sender")
     if room:
-        emit("typing", data, room=room)
+        emit("typing", {"sender": sender}, room=room)
+
+@socketio.on("request_active_customers")
+def send_active_customers():
+    # Send list of all active rooms
+    rooms = list(active_rooms.keys())
+    emit("active_customers", {"rooms": rooms})
 
 # ----------------------------
 # Run App

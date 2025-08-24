@@ -5,10 +5,10 @@
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; background:#f9f9f9; margin:0; display:flex; height:100vh; }
-    #sidebar { width:200px; background:#fff; border-right:1px solid #ddd; overflow-y:auto; }
-    #sidebar button { width:100%; padding:10px; border:none; background:none; cursor:pointer; text-align:left; }
-    #sidebar button.unread { font-weight:bold; }
-    #chat { flex:1; display:flex; flex-direction:column; background:white; border-radius:0; overflow:hidden; }
+    #sidebar { width:200px; background:#fff; border-right:1px solid #ddd; padding:10px; overflow-y:auto; }
+    #sidebar h2 { font-size:16px; margin-top:0; }
+    #sidebar button { width:100%; margin-bottom:5px; padding:5px; cursor:pointer; }
+    #chat { flex:1; display:flex; flex-direction:column; background:white; border-radius:12px; margin:10px; overflow:hidden; }
     #messages { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; }
     .msg { margin:5px 0; padding:10px; border-radius:12px; max-width:75%; word-wrap: break-word; }
     .mine { background:black; color:white; margin-left:auto; }
@@ -16,17 +16,21 @@
     #typing { font-size:12px; color:gray; margin:5px 10px; height:16px; }
     #form { display:flex; border-top:1px solid #ddd; }
     #input { flex:1; padding:10px; border:none; outline:none; font-size:14px; }
-    button.send { padding:10px; border:none; background:#000; color:white; cursor:pointer; font-weight:bold; }
+    button.sendBtn { padding:10px; border:none; background:#000; color:white; cursor:pointer; font-weight:bold; }
   </style>
 </head>
 <body>
-  <div id="sidebar"></div>
+  <div id="sidebar">
+    <h2>Active Customers</h2>
+    <div id="customersList"></div>
+  </div>
+
   <div id="chat">
     <div id="messages"></div>
     <div id="typing"></div>
     <form id="form">
       <input id="input" autocomplete="off" placeholder="Type a message..." />
-      <button class="send">Send</button>
+      <button class="sendBtn">Send</button>
     </form>
   </div>
 
@@ -36,77 +40,82 @@
 
   <script>
     const socket = io();
-    const sidebar = document.getElementById("sidebar");
-    const form = document.getElementById('form');
-    const input = document.getElementById('input');
+    let currentRoom = null;
     const messages = document.getElementById('messages');
     const typingDiv = document.getElementById('typing');
+    const input = document.getElementById('input');
+    const form = document.getElementById('form');
     const notifySound = document.getElementById('notifySound');
+    const customersList = document.getElementById('customersList');
 
-    let currentRoom = null;
+    socket.emit("join", { user_type: "admin", room: "admin-lobby" });
+    socket.emit("request_active_customers");
 
-    // Update customer list
-    socket.on("update_customers", data => {
-      sidebar.innerHTML = '';
-      for (let room in data) {
+    socket.on("active_customers", data => {
+      customersList.innerHTML = "";
+      data.rooms.forEach(room => {
         const btn = document.createElement("button");
         btn.textContent = room;
-        btn.dataset.room = room;
-        if (data[room] > 0) btn.classList.add("unread");
-        btn.onclick = () => selectRoom(room);
-        sidebar.appendChild(btn);
+        btn.onclick = () => selectCustomer(room);
+        customersList.appendChild(btn);
+      });
+    });
+
+    socket.on("new_customer", data => {
+      const room = data.room;
+      const btn = document.createElement("button");
+      btn.textContent = room;
+      btn.onclick = () => selectCustomer(room);
+      customersList.appendChild(btn);
+    });
+
+    function selectCustomer(room){
+      currentRoom = room;
+      messages.innerHTML = "";
+      socket.emit("join", { user_type:"admin", room });
+    }
+
+    socket.on("receive_message", data => {
+      if(currentRoom !== null){
+        const item = document.createElement("div");
+        item.classList.add("msg", data.sender === "admin" ? "mine" : "theirs");
+        item.textContent = data.message;
+        messages.appendChild(item);
+        messages.scrollTop = messages.scrollHeight;
+        if(data.sender !== "admin") notifySound.play();
       }
     });
 
-    function selectRoom(room) {
-      currentRoom = room;
-      messages.innerHTML = '';
-      input.value = '';
-      socket.emit("join", { room: room, user_type: "admin", sender: "admin" });
-      // Remove unread
-      const btns = document.querySelectorAll('button[data-room="'+room+'"]');
-      btns.forEach(b => b.classList.remove("unread"));
-    }
-
-    // Receive messages
-    socket.on("receive_message", data => {
-      if (!currentRoom || data.room !== currentRoom) return;
-
-      const item = document.createElement("div");
-      item.classList.add("msg", data.sender === "admin" ? "mine" : "theirs");
-      item.textContent = data.message;
-      messages.appendChild(item);
-      messages.scrollTop = messages.scrollHeight;
-      notifySound.play();
-    });
-
     socket.on("typing", data => {
-      if (currentRoom && data.room === currentRoom) {
-        typingDiv.textContent = data.message || "";
-        setTimeout(() => typingDiv.textContent = "", 2000);
+      if(currentRoom === data.room){
+        typingDiv.textContent = "Typing";
+        setTimeout(()=> typingDiv.textContent="", 2000);
       }
     });
 
     form.addEventListener("submit", e => {
       e.preventDefault();
-      if (input.value && currentRoom) {
+      if(input.value && currentRoom){
         const msg = input.value;
-        const item = document.createElement("div");
-        item.classList.add("msg", "mine");
-        item.textContent = msg;
-        messages.appendChild(item);
+        messages.appendChild(createMessageDiv(msg,"mine"));
         messages.scrollTop = messages.scrollHeight;
-
-        socket.emit("send_message", { room: currentRoom, message: msg, sender: "admin" });
-        input.value = '';
+        socket.emit("send_message", { room: currentRoom, message: msg, sender:"admin" });
+        input.value = "";
       }
     });
 
     input.addEventListener("input", () => {
-      if (currentRoom) {
-        socket.emit("typing", { room: currentRoom, message: "Admin is typing..." });
+      if(currentRoom){
+        socket.emit("typing", { room: currentRoom, sender:"admin" });
       }
     });
+
+    function createMessageDiv(msg, type){
+      const div = document.createElement("div");
+      div.classList.add("msg", type);
+      div.textContent = msg;
+      return div;
+    }
   </script>
 </body>
 </html>
