@@ -1,121 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Customer Chat</title>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
-    :root {
-      --chat-width-desktop: 400px;
-      --chat-width-mobile: 280px;
-      --chat-height-desktop: 500px;
-      --chat-height-mobile: 450px;
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
-    body { font-family: Arial, sans-serif; margin:0; background:#f7f7f7; display:flex; align-items:center; justify-content:center; height:100vh; }
+
     #chat {
-      width: min(var(--chat-width-desktop), 95%);
-      max-width: 95%;
-      height: var(--chat-height-desktop);
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
-      display:flex; flex-direction:column; overflow:hidden;
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      border-bottom: 1px solid #ccc;
     }
-    #messages { flex:1; padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
-    .msg { padding:10px 12px; border-radius:12px; max-width:80%; word-break:break-word; }
-    .msg.mine { background:#f0f0f0; color:#000; align-self:flex-start; }
-    .msg.theirs { background:#111; color:#fff; align-self:flex-end; }
-    #typing { height:20px; font-size:13px; color:#666; padding:6px 12px; }
-    #form { display:flex; gap:8px; padding:10px; border-top:1px solid #eee; }
-    #input { flex:1; padding:10px; border-radius:6px; border:1px solid #ddd; outline:none; font-size:14px;}
-    button { padding:10px 14px; background:#000; color:#fff; border:none; border-radius:6px; cursor:pointer; }
-    @media (max-width: 600px) {
-      #chat { width: var(--chat-width-mobile); height: var(--chat-height-mobile); }
+
+    .message {
+      margin: 5px 0;
+      padding: 8px;
+      border-radius: 6px;
+      max-width: 80%;
+    }
+
+    .customer {
+      background: #007bff;
+      color: white;
+      align-self: flex-end;
+    }
+
+    .admin {
+      background: #f1f1f1;
+      color: black;
+      align-self: flex-start;
+    }
+
+    .chat-input {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      gap: 6px;
+    }
+
+    .chat-input input {
+      flex: 1;
+      min-width: 0;
+      padding: 10px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+
+    .chat-input button {
+      padding: 10px 14px;
+      font-size: 14px;
+      background-color: #007bff;
+      border: none;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    /* Mobile fix */
+    @media (max-width: 480px) {
+      .chat-input {
+        padding: 6px;
+        gap: 4px;
+      }
+
+      .chat-input input {
+        font-size: 13px;
+        padding: 8px;
+      }
+
+      .chat-input button {
+        font-size: 13px;
+        padding: 8px 12px;
+      }
     }
   </style>
 </head>
 <body>
-  <div id="chat">
-    <div id="messages"></div>
-    <div id="typing"></div>
-    <div id="form">
-      <input id="input" placeholder="Type a message..." autocomplete="off" />
-      <button id="sendBtn">Send</button>
-    </div>
+  <div id="chat"></div>
+  <div class="chat-input">
+    <input type="text" id="message" placeholder="Type your message...">
+    <button onclick="sendMessage()">Send</button>
   </div>
 
-  <audio id="notifySound" preload="auto">
-    <source src="/static/notification.mp3" type="audio/mpeg">
-  </audio>
-
+  <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    const roomId = "{{ room_id }}";           // injected by Flask route /customer/<room_id>
-    const senderLabel = "Customer";          // displayed sender identity (kept simple)
+    const chat = document.getElementById('chat');
+    const messageInput = document.getElementById('message');
 
-    // Join the room as customer (user_type optional)
-    socket.emit("join", { room: roomId, user_type: "customer" });
-
-    const messagesEl = document.getElementById("messages");
-    const typingEl = document.getElementById("typing");
-    const inputEl = document.getElementById("input");
-    const sendBtn = document.getElementById("sendBtn");
-    const notifySound = document.getElementById("notifySound");
-
-    // load persisted history (server sends only to this socket)
-    socket.on("load_history", history => {
-      messagesEl.innerHTML = "";
-      history.forEach(row => {
-        // row: { sender, message }
-        const el = document.createElement("div");
-        el.className = "msg " + (row.sender.toLowerCase().includes("admin") ? "theirs" : "mine");
-        el.textContent = row.message;
-        messagesEl.appendChild(el);
-      });
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    });
-
-    // when other side (admin) sends a message, server emits receive_message (exclude sender)
-    socket.on("receive_message", data => {
-      const el = document.createElement("div");
-      el.className = "msg " + (data.sender.toLowerCase().includes("admin") ? "theirs" : "mine");
-      el.textContent = data.message;
-      messagesEl.appendChild(el);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-      // play notification only if message came from admin
-      if (data.sender.toLowerCase().includes("admin")) {
-        notifySound.play().catch(()=>{/* ignore autoplay block */});
+    socket.on('message', (data) => {
+      addMessage(data.text, data.sender);
+      if (data.sender === "admin") {
+        new Audio("/static/notification.mp3").play().catch(() => {});
       }
     });
 
-    socket.on("typing", data => {
-      typingEl.textContent = data.message || "";
-      setTimeout(()=> typingEl.textContent = "", 2000);
-    });
-
-    // send message: client appends locally to avoid duplicate, server broadcasts to others
-    function sendMessage(){
-      const text = inputEl.value.trim();
-      if (!text) return;
-      // append locally
-      const el = document.createElement("div");
-      el.className = "msg mine";
-      el.textContent = text;
-      messagesEl.appendChild(el);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-      // emit to server (server saves and broadcasts to room include_self=False)
-      socket.emit("send_message", { room: roomId, sender: senderLabel, message: text });
-      inputEl.value = "";
+    function sendMessage() {
+      const text = messageInput.value.trim();
+      if (text) {
+        socket.emit('message', { sender: 'customer', text });
+        messageInput.value = '';
+      }
     }
 
-    sendBtn.addEventListener("click", sendMessage);
-    inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); sendMessage(); }
-    });
-
-    inputEl.addEventListener("input", () => {
-      socket.emit("typing", { room: roomId });
-    });
+    function addMessage(text, sender) {
+      const div = document.createElement('div');
+      div.classList.add('message', sender);
+      div.innerText = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
   </script>
 </body>
 </html>

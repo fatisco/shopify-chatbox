@@ -1,195 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Chat</title>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
-    :root {
-      --chat-width-desktop: 700px;
-      --chat-width-mobile: 320px;
-      --chat-height-desktop: 560px;
-      --chat-height-mobile: 480px;
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
-    body { font-family: Arial, sans-serif; margin:0; background:#f7f7f7; display:flex; align-items:center; justify-content:center; min-height:100vh; }
-    #wrap { display:flex; gap:12px; width:95%; max-width:1200px; }
-    #sidebar {
-      width: 260px; background:#fff; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06); padding:12px; height:var(--chat-height-desktop);
-      overflow:auto;
+
+    #chat {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      border-bottom: 1px solid #ccc;
     }
-    #main {
-      flex:1; display:flex; flex-direction:column; background:#fff; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06); height:var(--chat-height-desktop);
+
+    .message {
+      margin: 5px 0;
+      padding: 8px;
+      border-radius: 6px;
+      max-width: 80%;
     }
-    #customers { display:flex; flex-direction:column; gap:8px; }
-    .customerItem { padding:10px; border-radius:8px; cursor:pointer; border:1px solid #eee; }
-    .customerItem.active { background:#f0f0f0; }
-    #messages { flex:1; padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
-    .msg { padding:10px 12px; border-radius:12px; max-width:80%; word-break:break-word; }
-    .msg.mine { background:#111; color:#fff; align-self:flex-end; }
-    .msg.theirs { background:#f0f0f0; color:#000; align-self:flex-start; }
-    #typing { height:20px; font-size:13px; color:#666; padding:6px 12px; }
-    #inputRow { display:flex; gap:8px; padding:10px; border-top:1px solid #eee; }
-    #roomName { font-weight:bold; margin-bottom:8px; }
-    input[type="text"] { padding:10px; border-radius:6px; border:1px solid #ddd; flex:1; }
-    button { padding:10px 12px; background:#000; color:#fff; border:none; border-radius:6px; cursor:pointer; }
-    @media (max-width: 900px) {
-      #wrap { flex-direction:column; align-items:center; }
-      #sidebar { width: 90%; height: 220px; }
-      #main { width: 90%; height: 70vh; }
+
+    .customer {
+      background: #007bff;
+      color: white;
+      align-self: flex-start;
+    }
+
+    .admin {
+      background: #f1f1f1;
+      color: black;
+      align-self: flex-end;
+    }
+
+    .chat-input {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      gap: 6px;
+    }
+
+    .chat-input input {
+      flex: 1;
+      min-width: 0;
+      padding: 10px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+
+    .chat-input button {
+      padding: 10px 14px;
+      font-size: 14px;
+      background-color: #007bff;
+      border: none;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    /* Mobile fix */
+    @media (max-width: 480px) {
+      .chat-input {
+        padding: 6px;
+        gap: 4px;
+      }
+
+      .chat-input input {
+        font-size: 13px;
+        padding: 8px;
+      }
+
+      .chat-input button {
+        font-size: 13px;
+        padding: 8px 12px;
+      }
     }
   </style>
 </head>
 <body>
-  <div id="wrap">
-    <div id="sidebar">
-      <div style="margin-bottom:10px;"><strong>Active Customers</strong></div>
-      <div id="customers"></div>
-    </div>
-
-    <div id="main">
-      <div style="padding:12px; border-bottom:1px solid #f1f1f1;">
-        <div id="roomName">No room selected</div>
-      </div>
-
-      <div id="messages"></div>
-      <div id="typing"></div>
-
-      <div id="inputRow">
-        <input id="messageInput" placeholder="Type a message" />
-        <button id="sendBtn">Send</button>
-      </div>
-    </div>
+  <div id="chat"></div>
+  <div class="chat-input">
+    <input type="text" id="message" placeholder="Type your message...">
+    <button onclick="sendMessage()">Send</button>
   </div>
 
-  <audio id="notifySound" preload="auto">
-    <source src="/static/notification.mp3" type="audio/mpeg">
-  </audio>
-
+  <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    // admin joins admin-global room to receive customer notifications
-    socket.emit("join", { room: "admin", user_type: "admin" });
+    const chat = document.getElementById('chat');
+    const messageInput = document.getElementById('message');
 
-    const customersEl = document.getElementById("customers");
-    const messagesEl = document.getElementById("messages");
-    const roomNameEl = document.getElementById("roomName");
-    const typingEl = document.getElementById("typing");
-    const messageInput = document.getElementById("messageInput");
-    const sendBtn = document.getElementById("sendBtn");
-    const notifySound = document.getElementById("notifySound");
-
-    let activeCustomers = []; // array of room ids
-    let currentRoom = null;
-
-    // Helper to add customer to sidebar
-    function addOrActivateCustomer(room) {
-      if (!activeCustomers.includes(room)) {
-        activeCustomers.push(room);
-        const div = document.createElement("div");
-        div.className = "customerItem";
-        div.id = "cust-" + room;
-        div.textContent = room;
-        div.addEventListener("click", () => selectRoom(room));
-        customersEl.prepend(div);
-      } else {
-        // bring to top visually (move element)
-        const el = document.getElementById("cust-" + room);
-        if (el) {
-          customersEl.prepend(el);
-        }
-      }
-      // visually highlight active if selected
-      updateActiveUI();
-    }
-
-    function updateActiveUI(){
-      activeCustomers.forEach(r => {
-        const el = document.getElementById("cust-" + r);
-        if (!el) return;
-        if (r === currentRoom) el.classList.add("active");
-        else el.classList.remove("active");
-      });
-    }
-
-    function selectRoom(room) {
-      if (!room) return;
-      currentRoom = room;
-      roomNameEl.textContent = "Room: " + room;
-      messagesEl.innerHTML = "";
-      updateActiveUI();
-      // join the customer's room so admin receives broadcasts for it
-      socket.emit("join", { room: room, user_type: "admin" });
-      // request history: server will auto send history to the socket because join triggers load_history to this socket
-    }
-
-    // When a customer sends a message, server emits "customer_message_event" to admin room
-    socket.on("customer_message_event", data => {
-      const room = data.room;
-      addOrActivateCustomer(room);
-
-      // if admin currently viewing the room, append the message
-      if (currentRoom === room) {
-        const el = document.createElement("div");
-        el.className = "msg theirs";
-        el.textContent = data.message;
-        messagesEl.appendChild(el);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
-        notifySound.play().catch(()=>{});
+    socket.on('message', (data) => {
+      addMessage(data.text, data.sender);
+      if (data.sender === "customer") {
+        new Audio("/static/notification.mp3").play().catch(() => {});
       }
     });
 
-    // When the server sends historical messages to this socket (only for join calls)
-    socket.on("load_history", history => {
-      // history is messages for the ROOM that was just joined (server emits to this socket)
-      // Clear current messages (we usually join specific customer room when selectRoom)
-      messagesEl.innerHTML = "";
-      history.forEach(row => {
-        const el = document.createElement("div");
-        el.className = row.sender.toLowerCase().includes("admin") ? "msg mine" : "msg theirs";
-        el.textContent = row.message;
-        messagesEl.appendChild(el);
-      });
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    });
-
-    // When server forwards a message to admin (exclude sender)
-    socket.on("receive_message", data => {
-      // data: { sender, message } - server used include_self=False, so admin receives others' messages
-      if (!currentRoom) return; // ignore if no room selected
-      const el = document.createElement("div");
-      el.className = data.sender.toLowerCase().includes("admin") ? "msg mine" : "msg theirs";
-      el.textContent = data.message;
-      messagesEl.appendChild(el);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-      if (!data.sender.toLowerCase().includes("admin")) notifySound.play().catch(()=>{});
-    });
-
-    socket.on("typing", data => {
-      typingEl.textContent = data.message || "";
-      setTimeout(()=> typingEl.textContent = "", 2000);
-    });
-
-    // Send admin message to currentRoom
-    function sendMessage(){
-      if (!currentRoom) { alert("Select a customer room first."); return; }
+    function sendMessage() {
       const text = messageInput.value.trim();
-      if (!text) return;
-      // append locally
-      const el = document.createElement("div");
-      el.className = "msg mine";
-      el.textContent = text;
-      messagesEl.appendChild(el);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-      // emit to server (server will persist and broadcast to that room include_self=False)
-      socket.emit("send_message", { room: currentRoom, sender: "Admin", message: text });
-      messageInput.value = "";
+      if (text) {
+        socket.emit('message', { sender: 'admin', text });
+        messageInput.value = '';
+      }
     }
 
-    sendBtn.addEventListener("click", sendMessage);
-    messageInput.addEventListener("keydown", (e)=>{ if (e.key === "Enter") { e.preventDefault(); sendMessage(); }});
-    messageInput.addEventListener("input", () => {
-      if (currentRoom) socket.emit("typing", { room: currentRoom });
-    });
+    function addMessage(text, sender) {
+      const div = document.createElement('div');
+      div.classList.add('message', sender);
+      div.innerText = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
   </script>
 </body>
 </html>
