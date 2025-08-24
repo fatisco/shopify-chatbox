@@ -6,35 +6,42 @@ from datetime import datetime
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "secret!")
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-DB_FILE = "chat.db"
+DB_FILE = os.path.join(os.path.dirname(__file__), "chatbox.db")
 
-# --- DB Setup ---
+# --- Database Setup ---
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        room TEXT,
-        sender TEXT,
-        message TEXT,
-        ts TEXT
-    )""")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room TEXT NOT NULL,
+            sender TEXT NOT NULL,
+            message TEXT NOT NULL,
+            ts DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE,
+            last_seen DATETIME
+        )
+    """)
     conn.commit()
     conn.close()
-
-init_db()
 
 def save_message(room, sender, message):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("INSERT INTO messages (room, sender, message, ts) VALUES (?, ?, ?, ?)",
-              (room, sender, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    c.execute("INSERT INTO messages (room, sender, message) VALUES (?, ?, ?)",
+              (room, sender, message))
     conn.commit()
     conn.close()
 
-def load_history(room):
+def load_messages(room):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT sender, message FROM messages WHERE room=? ORDER BY id ASC", (room,))
@@ -42,11 +49,30 @@ def load_history(room):
     conn.close()
     return [{"sender": r[0], "message": r[1]} for r in rows]
 
-active_customers = set()
+def update_customer(name):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO customers (name, last_seen)
+        VALUES (?, ?)
+        ON CONFLICT(name) DO UPDATE SET last_seen=excluded.last_seen
+    """, (name, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def get_customers():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT name FROM customers ORDER BY last_seen DESC")
+    rows = [r[0] for r in c.fetchall()]
+    conn.close()
+    return rows
+
+init_db()
 
 # --- Routes ---
 @app.route("/")
-def index():
+def landing():
     return render_template("landing.html")
 
 @app.route("/admin")
@@ -55,39 +81,38 @@ def admin():
 
 @app.route("/customer/<customer_id>")
 def customer(customer_id):
-    return render_template("customer.html", customer_id=customer_id)
+    messages = load_messages(customer_id)
+    return render_template("customer.html", customer_id=customer_id, messages=messages)
 
-# --- Socket.IO Events ---
+# --- Socket.IO ---
 @socketio.on("join")
 def handle_join(data):
     room = data.get("room")
-    user_type = data.get("user_type")
-    if not room: return
-
+    user_type = data.get("user_type", "customer")
+    if not room:
+        return
     join_room(room)
     if user_type=="customer":
-        active_customers.add(room)
-        emit("active_customers", {"customers": list(active_customers)}, broadcast=True)
-    
-    # send message history to this socket only
-    history = load_history(room)
-    emit("load_history", history, room=request.sid)
+        update_customer(room)
+        # notify admin about active customers
+        emit("active_customers", {"customers": get_customers()}, room="admin")
+    # send message history to joining socket
+    history = load_messages(room)
+    emit("load_history", history)
 
 @socketio.on("send_message")
-def handle_message(data):
+def handle_send_message(data):
     room = data.get("room")
     sender = data.get("sender")
     message = data.get("message")
-    if not (room and message): return
-
+    if not (room and sender and message):
+        return
     save_message(room, sender, message)
-
-    # broadcast to the room including sender
-    emit("receive_message", {"room": room, "sender": sender, "message": message}, room=room)
-
-    # update admin active customer list
-    emit("active_customers", {"customers": list(active_customers)}, room="admin")
+    emit("receive_message", {"sender": sender, "message": message, "room": room}, room=room)
+    if sender!="admin":
+        emit("active_customers", {"customers": get_customers()}, room="admin")
 
 # --- Run ---
-if __name__=="__main__":
-    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    socketio.run(app, host="0.0.0.0", port=port)
