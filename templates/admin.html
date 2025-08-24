@@ -1,213 +1,104 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Dashboard</title>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      height: 100vh;
-      background: #f7f7f7;
-    }
-
-    .sidebar {
-      width: 250px;
-      background: #333;
-      color: #fff;
-      border-right: 1px solid #444;
-      padding: 10px;
-      overflow-y: auto;
-    }
-
-    .sidebar h2 {
-      margin: 10px 0;
-      font-size: 18px;
-    }
-
-    .customer-item {
-      padding: 10px;
-      border-bottom: 1px solid #444;
-      cursor: pointer;
-    }
-
-    .customer-item.active {
-      background: #000;
-      color: #fff;
-    }
-
-    .chat-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      background: #fff;
-    }
-
-    .chat-header {
-      background: #000;
-      color: #fff;
-      padding: 15px;
-      text-align: center;
-      font-size: 18px;
-    }
-
-    .chat-messages {
-      flex: 1;
-      padding: 10px;
-      overflow-y: auto;
-    }
-
-    .chat-message {
-      margin: 8px 0;
-      padding: 10px;
-      border-radius: 12px;
-      max-width: 75%;
-      word-wrap: break-word;
-    }
-
-    .customer {
-      background: #333;
-      color: #fff;
-      margin-right: auto;
-    }
-
-    .admin {
-      background: #ddd;
-      color: #000;
-      margin-left: auto;
-    }
-
-    .chat-input {
-      display: flex;
-      align-items: center;
-      padding: 10px;
-      border-top: 1px solid #ddd;
-      background: #fff;
-    }
-
-    .chat-input input {
-      flex: 1;
-      padding: 12px;
-      border: 1px solid #ccc;
-      border-radius: 20px;
-      font-size: 14px;
-      outline: none;
-    }
-
-    .chat-input button {
-      margin-left: 8px;
-      padding: 12px 20px;
-      font-size: 14px;
-      border: none;
-      border-radius: 20px;
-      background-color: #000;
-      color: #fff;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-
-    .chat-input button:active {
-      transform: scale(0.97);
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+body { font-family: Arial; margin:0; display:flex; height:100vh; }
+.sidebar { width:250px; background:#f1f1f1; overflow-y:auto; padding:10px; }
+.customer-item { padding:10px; border-bottom:1px solid #ddd; cursor:pointer; }
+.customer-item.active { background:#000; color:#fff; }
+.chat-area { flex:1; display:flex; flex-direction:column; }
+.chat-header { background:#000; color:#fff; padding:15px; text-align:center; font-size:18px; }
+.chat-messages { flex:1; padding:10px; overflow-y:auto; }
+.chat-message { margin:8px 0; padding:10px; border-radius:12px; max-width:70%; word-wrap:break-word; }
+.customer { background:#f1f0f0; margin-right:auto; }
+.admin { background:#000; color:#fff; margin-left:auto; }
+.chat-input { display:flex; padding:10px; border-top:1px solid #ddd; background:#fff; }
+.chat-input input { flex:1; padding:12px; border:1px solid #ccc; border-radius:20px; outline:none; }
+.chat-input button { margin-left:8px; padding:12px 20px; border:none; border-radius:20px; background:#000; color:#fff; cursor:pointer; }
+</style>
 </head>
 <body>
-  <div class="sidebar">
-    <h2>Active Customers</h2>
-    <div id="customerList"></div>
+<div class="sidebar">
+  <h2>Active Customers</h2>
+  <div id="customerList"></div>
+</div>
+
+<div class="chat-area">
+  <div class="chat-header">Shopify Customer Support</div>
+  <div class="chat-messages" id="messages"></div>
+  <div class="chat-input">
+    <input id="messageInput" type="text" placeholder="Type a message...">
+    <button id="sendBtn">Send</button>
   </div>
+</div>
 
-  <div class="chat-area">
-    <div class="chat-header">Shopify Customer Support</div>
-    <div class="chat-messages" id="messages"></div>
-    <div class="chat-input">
-      <input id="messageInput" type="text" placeholder="Type a message...">
-      <button id="sendBtn">Send</button>
-    </div>
-  </div>
+<script>
+const socket = io();
+let activeCustomer = null;
+const customerListDiv = document.getElementById("customerList");
+const messagesDiv = document.getElementById("messages");
+const input = document.getElementById("messageInput");
+const sendBtn = document.getElementById("sendBtn");
+const messageHistory = {};
 
-  <script>
-    const socket = io();
+function renderCustomers(customers){
+  customerListDiv.innerHTML="";
+  customers.forEach(cust=>{
+    const div=document.createElement("div");
+    div.classList.add("customer-item");
+    if(cust===activeCustomer) div.classList.add("active");
+    div.innerText=cust;
+    div.onclick=()=>{ activeCustomer=cust; renderCustomers(customers); renderMessages(); }
+    customerListDiv.appendChild(div);
+  });
+}
 
-    let activeCustomer = null;
-    const customerListDiv = document.getElementById("customerList");
-    const messagesDiv = document.getElementById("messages");
-    const input = document.getElementById("messageInput");
-    const sendBtn = document.getElementById("sendBtn");
+function renderMessages(){
+  messagesDiv.innerHTML="";
+  if(!activeCustomer) return;
+  (messageHistory[activeCustomer]||[]).forEach(msg=>{
+    const div=document.createElement("div");
+    div.classList.add("chat-message", msg.sender);
+    div.innerText=msg.message;
+    messagesDiv.appendChild(div);
+  });
+  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+}
 
-    const messageHistory = {};
+sendBtn.addEventListener("click", ()=>{
+  if(!activeCustomer) return;
+  const msg=input.value.trim();
+  if(!msg) return;
+  const messageObj={message:msg, sender:"admin"};
+  messageHistory[activeCustomer]=messageHistory[activeCustomer]||[];
+  messageHistory[activeCustomer].push(messageObj);
+  renderMessages();
+  socket.emit("send_message",{room:activeCustomer, sender:"admin", message:msg});
+  input.value="";
+});
 
-    // Render customers sidebar
-    function renderCustomers(customers) {
-      customerListDiv.innerHTML = "";
-      customers.forEach(cust => {
-        const div = document.createElement("div");
-        div.classList.add("customer-item");
-        if (cust === activeCustomer) div.classList.add("active");
-        div.innerText = cust;
-        div.onclick = () => {
-          activeCustomer = cust;
-          renderCustomers(customers);
-          renderMessages();
-          socket.emit("join", { name: activeCustomer });
-        };
-        customerListDiv.appendChild(div);
-      });
-    }
+input.addEventListener("keypress",(e)=>{ if(e.key==="Enter") sendBtn.click(); });
 
-    // Render chat messages for active customer
-    function renderMessages() {
-      messagesDiv.innerHTML = "";
-      if (!activeCustomer) return;
-      (messageHistory[activeCustomer] || []).forEach(msg => {
-        const div = document.createElement("div");
-        div.classList.add("chat-message", msg.sender === "admin" ? "admin" : "customer");
-        div.innerText = msg.message;
-        messagesDiv.appendChild(div);
-      });
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
+socket.on("load_history", data=>{
+  if(!activeCustomer) return;
+  messageHistory[activeCustomer]=data;
+  renderMessages();
+});
 
-    // Send message
-    sendBtn.addEventListener("click", () => {
-      const msg = input.value.trim();
-      if (msg && activeCustomer) {
-        messageHistory[activeCustomer] = messageHistory[activeCustomer] || [];
-        messageHistory[activeCustomer].push({ message: msg, sender: "admin" });
-        renderMessages();
-        socket.emit("send_message", { sender: "admin", receiver: activeCustomer, message: msg });
-        input.value = "";
-      }
-    });
+socket.on("receive_message", data=>{
+  const room=data.room||data.room_id||data.room;
+  messageHistory[room]=messageHistory[room]||[];
+  messageHistory[room].push({message:data.message, sender:data.sender});
+  if(room===activeCustomer) renderMessages();
+});
 
-    input.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") sendBtn.click();
-    });
-
-    // Listen for customer messages
-    socket.on("receive_message", data => {
-      const sender = data.sender;
-      const receiver = data.receiver;
-      const msg = data.message;
-
-      const customerName = sender === "admin" ? receiver : sender;
-
-      messageHistory[customerName] = messageHistory[customerName] || [];
-      messageHistory[customerName].push({ message: msg, sender: sender });
-
-      if (activeCustomer === customerName) renderMessages();
-      renderCustomers(Object.keys(messageHistory));
-    });
-
-    // Update active customers list
-    socket.on("active_customers", data => {
-      const customers = data.customers;
-      renderCustomers(customers);
-    });
-  </script>
+socket.on("active_customers", data=>{
+  renderCustomers(data.customers);
+});
+</script>
 </body>
 </html>
