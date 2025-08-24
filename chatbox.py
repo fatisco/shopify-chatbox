@@ -10,6 +10,12 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "secret!")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 # ----------------------------
+# Active customers and chat history
+# ----------------------------
+active_customers = {}  # room_id: unread_count
+chat_history = {}      # room_id: list of {sender, message}
+
+# ----------------------------
 # Routes
 # ----------------------------
 @app.route("/")
@@ -29,29 +35,51 @@ def customer(room_id):
 # ----------------------------
 @socketio.on("join")
 def on_join(data):
-    """Join a specific chat room"""
     room = data.get("room")
+    user_type = data.get("user_type")  # "admin" or "customer"
     if room:
         join_room(room)
 
+        # Initialize chat history
+        if room not in chat_history:
+            chat_history[room] = []
+
+        # Send existing messages to the user who just joined
+        for msg in chat_history[room]:
+            emit("receive_message", msg, room=request.sid)
+
+        # Track active customers
+        if user_type == "customer":
+            if room not in active_customers:
+                active_customers[room] = 0
+            emit("update_customers", active_customers, broadcast=True)
+        elif user_type == "admin":
+            emit("receive_message", {"message": f"✅ Admin joined room {room}", "sender": "admin"}, room=room)
+
 @socketio.on("leave")
 def on_leave(data):
-    """Leave a specific chat room"""
     room = data.get("room")
     if room:
         leave_room(room)
 
 @socketio.on("send_message")
 def handle_send_message(data):
-    """Send message to a specific room"""
     room = data.get("room")
     message = data.get("message", "").strip()
+    sender = data.get("sender", "customer")
     if room and message:
-        emit("receive_message", {"message": message}, room=room)
+        msg_data = {"message": message, "sender": sender, "room": room}
+        chat_history.setdefault(room, []).append(msg_data)  # Save message
+        emit("receive_message", msg_data, room=room)
+
+        # Increment unread count if customer sends
+        if sender == "customer":
+            if room in active_customers:
+                active_customers[room] += 1
+                emit("update_customers", active_customers, broadcast=True)
 
 @socketio.on("typing")
 def handle_typing(data):
-    """Notify typing status"""
     room = data.get("room")
     if room:
         emit("typing", data, room=room)

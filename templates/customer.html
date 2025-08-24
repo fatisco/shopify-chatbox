@@ -33,7 +33,7 @@
   <script>
     const socket = io();
     const roomId = "{{ room_id }}";
-    socket.emit("join", { room: roomId });
+    socket.emit("join", { room: roomId, user_type: "customer", sender: "customer" });
 
     const form = document.getElementById('form');
     const input = document.getElementById('input');
@@ -43,7 +43,7 @@
 
     socket.on("receive_message", data => {
       const item = document.createElement("div");
-      item.classList.add("msg", "theirs");
+      item.classList.add("msg", data.sender === "customer" ? "mine" : "theirs");
       item.textContent = data.message;
       messages.appendChild(item);
       messages.scrollTop = messages.scrollHeight;
@@ -65,7 +65,7 @@
         messages.appendChild(item);
         messages.scrollTop = messages.scrollHeight;
 
-        socket.emit("send_message", { room: roomId, message: msg });
+        socket.emit("send_message", { room: roomId, message: msg, sender: "customer" });
         input.value = "";
       }
     });
