@@ -1,79 +1,230 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard</title>
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
-    body { background: #111; color: #eee; font-family: Arial, sans-serif; margin:0; display:flex; height:100vh; }
-    #customers { width: 25%; background:#222; padding: 10px; overflow-y: auto; }
-    #chat-area { flex: 1; display:flex; flex-direction:column; }
-    header { background: #222; padding: 12px; text-align: center; font-weight: bold; }
-    #chat { flex: 1; padding: 10px; overflow-y: auto; }
-    .msg { margin: 8px 0; padding: 10px; border-radius: 12px; max-width: 75%; word-wrap: break-word; }
-    .me { background: #444; margin-left: auto; }
-    .them { background: #2a2a2a; margin-right: auto; }
-    #input-area { display:flex; padding: 10px; background:#222; }
-    #message { flex:1; padding:8px; border-radius:8px; border:none; }
-    button { background:#555; color:#fff; border:none; padding:10px; border-radius:8px; margin-left:6px; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+      background: #111;
+      color: #eee;
+    }
+
+    .sidebar {
+      width: 250px;
+      background: #222;
+      border-right: 1px solid #333;
+      padding: 10px;
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      margin: 10px 0;
+      font-size: 18px;
+    }
+
+    .customer-item {
+      padding: 10px;
+      border-bottom: 1px solid #333;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .customer-item.active {
+      background: #444;
+      color: #fff;
+    }
+
+    .customer-item.new-message {
+      animation: flash 1s infinite alternate;
+    }
+
+    @keyframes flash {
+      0% { background: #444; }
+      100% { background: #666; }
+    }
+
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #111;
+    }
+
+    .chat-header {
+      background: #000;
+      color: #fff;
+      padding: 15px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+    }
+
+    .chat-message {
+      margin: 6px 0;
+      padding: 10px;
+      border-radius: 12px;
+      max-width: 70%;
+      word-wrap: break-word;
+      line-height: 1.4;
+    }
+
+    .customer {
+      background: #333;
+      color: #eee;
+      margin-right: auto;
+    }
+
+    .admin {
+      background: #555;
+      color: #fff;
+      margin-left: auto;
+    }
+
+    .chat-input {
+      display: flex;
+      align-items: center;
+      padding: 10px;
+      border-top: 1px solid #333;
+      background: #222;
+    }
+
+    .chat-input input {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #555;
+      border-radius: 20px;
+      font-size: 14px;
+      outline: none;
+      background: #111;
+      color: #eee;
+    }
+
+    .chat-input button {
+      margin-left: 8px;
+      padding: 12px 22px;
+      font-size: 14px;
+      border: none;
+      border-radius: 20px;
+      background-color: #444;
+      color: #fff;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .chat-input button:active {
+      transform: scale(0.97);
+    }
   </style>
 </head>
 <body>
-  <div id="customers">
-    <h3>Active Customers</h3>
-    <ul id="customer-list">
-      {% for c in customers %}
-        <li onclick="selectCustomer('{{ c }}')">{{ c }}</li>
-      {% endfor %}
-    </ul>
+  <div class="sidebar">
+    <h2>Active Customers</h2>
+    <div id="customerList"></div>
   </div>
-  <div id="chat-area">
-    <header>Admin Dashboard</header>
-    <div id="chat"></div>
-    <div id="input-area">
-      <input type="text" id="message" placeholder="Type a message...">
-      <button onclick="sendMessage()">Send</button>
+
+  <div class="chat-area">
+    <div class="chat-header">Shopify Customer Support</div>
+    <div class="chat-messages" id="messages"></div>
+    <div class="chat-input">
+      <input id="messageInput" type="text" placeholder="Type a message...">
+      <button id="sendBtn">Send</button>
     </div>
   </div>
 
-<script>
-  var socket = io();
-  var currentCustomer = null;
+  <!-- Notification sound -->
+  <audio id="notifySound" src="https://www.myinstants.com/media/sounds/notification.mp3" preload="auto"></audio>
 
-  socket.emit("join", {name: "admin"});
+  <script>
+    const socket = io();
 
-  function selectCustomer(cust) {
-    currentCustomer = cust;
-    document.getElementById("chat").innerHTML = "";
-    // TODO: fetch old messages via AJAX if needed
-  }
+    let activeCustomer = null;
+    const customerListDiv = document.getElementById("customerList");
+    const messagesDiv = document.getElementById("messages");
+    const input = document.getElementById("messageInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const notifySound = document.getElementById("notifySound");
 
-  function sendMessage() {
-    if(!currentCustomer) return alert("Select a customer first!");
-    let msg = document.getElementById("message").value;
-    if(msg.trim() === "") return;
-    socket.emit("send_message", {sender: "admin", receiver: currentCustomer, message: msg});
-    document.getElementById("message").value = "";
-  }
+    const messageHistory = {};
 
-  socket.on("receive_message", function(data) {
-    if(data.sender === currentCustomer || data.receiver === currentCustomer) {
-      let div = document.createElement("div");
-      div.className = "msg " + (data.sender === "admin" ? "me" : "them");
-      div.innerHTML = `<b>${data.sender}</b>: ${data.message}`;
-      document.getElementById("chat").appendChild(div);
+    function renderCustomers(customers) {
+      customerListDiv.innerHTML = "";
+      customers.forEach((cust) => {
+        const div = document.createElement("div");
+        div.classList.add("customer-item");
+        if (cust === activeCustomer) div.classList.add("active");
+        if (messageHistory[cust]?.newMessage) div.classList.add("new-message");
+        div.innerText = cust;
+        div.onclick = () => {
+          activeCustomer = cust;
+          if (messageHistory[cust]) messageHistory[cust].newMessage = false;
+          renderCustomers(customers);
+          renderMessages();
+        };
+        customerListDiv.appendChild(div);
+      });
     }
-  });
 
-  socket.on("active_customers", function(data) {
-    let list = document.getElementById("customer-list");
-    list.innerHTML = "";
-    data.customers.forEach(c => {
-      let li = document.createElement("li");
-      li.innerText = c;
-      li.onclick = () => selectCustomer(c);
-      list.appendChild(li);
+    function renderMessages() {
+      messagesDiv.innerHTML = "";
+      if (!activeCustomer) return;
+      (messageHistory[activeCustomer] || []).forEach((msg) => {
+        const div = document.createElement("div");
+        div.classList.add("chat-message", msg.sender);
+        div.innerText = msg.text;
+        messagesDiv.appendChild(div);
+      });
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    sendBtn.addEventListener("click", () => {
+      const msg = input.value.trim();
+      if (msg && activeCustomer) {
+        const messageObj = { text: msg, sender: "admin" };
+        messageHistory[activeCustomer] = messageHistory[activeCustomer] || [];
+        messageHistory[activeCustomer].push(messageObj);
+        renderMessages();
+        socket.emit("send_message", { sender: "admin", receiver: activeCustomer, message: msg });
+        input.value = "";
+      }
     });
-  });
-</script>
+
+    input.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") sendBtn.click();
+    });
+
+    socket.on("active_customers", (data) => {
+      renderCustomers(data.customers);
+    });
+
+    socket.on("receive_message", (data) => {
+      const { sender, receiver, message } = data;
+      const cust = sender === "admin" ? receiver : sender;
+
+      messageHistory[cust] = messageHistory[cust] || [];
+      messageHistory[cust].push({ text: message, sender: sender === "admin" ? "admin" : "customer" });
+
+      // Flash sidebar & play sound if new message for inactive customer
+      if (cust !== activeCustomer) {
+        messageHistory[cust].newMessage = true;
+        notifySound.play();
+      }
+
+      renderMessages();
+      renderCustomers(Object.keys(messageHistory));
+    });
+  </script>
 </body>
 </html>
