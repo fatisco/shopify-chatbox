@@ -1,156 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Shopify Customer Support</title>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f7f7f7;
-      margin: 0;
-      padding: 0;
-    }
-
-    .chat-container {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      max-width: 600px;
-      margin: 0 auto;
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-
-    .chat-header {
-      background: #000;
-      color: #fff;
-      padding: 15px;
-      text-align: center;
-      font-size: 18px;
-    }
-
-    .chat-messages {
-      flex: 1;
-      padding: 10px;
-      overflow-y: auto;
-    }
-
-    .chat-message {
-      margin: 8px 0;
-      padding: 10px;
-      border-radius: 12px;
-      max-width: 75%;
-      word-wrap: break-word;
-    }
-
-    .customer {
-      background: #333;
-      color: #fff;
-      margin-left: auto;
-    }
-
-    .admin {
-      background: #ddd;
-      color: #000;
-      margin-right: auto;
-    }
-
-    .chat-input {
-      display: flex;
-      align-items: center;
-      padding: 10px;
-      border-top: 1px solid #ddd;
-      background: #fff;
-    }
-
-    .chat-input input {
-      flex: 1;
-      padding: 12px;
-      border: 1px solid #ccc;
-      border-radius: 20px;
-      font-size: 14px;
-      outline: none;
-    }
-
-    .chat-input button {
-      margin-left: 8px;
-      padding: 12px 20px;
-      font-size: 14px;
-      border: none;
-      border-radius: 20px;
-      background-color: #000;
-      color: #fff;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-
-    .chat-input button:active {
-      transform: scale(0.97);
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Customer Chat</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+body{font-family:Arial;background:#f7f7f7;margin:0;padding:0;}
+.chat-container{display:flex;flex-direction:column;height:100vh;max-width:600px;margin:0 auto;background:#fff;border:1px solid #ddd;border-radius:10px;overflow:hidden;}
+.chat-header{background:#000;color:#fff;padding:15px;text-align:center;font-size:18px;}
+.chat-messages{flex:1;padding:10px;overflow-y:auto;}
+.chat-message{margin:8px 0;padding:10px;border-radius:12px;max-width:75%;word-wrap:break-word;}
+.customer{background:#000;color:#fff;margin-left:auto;}
+.admin{background:#f1f0f0;color:#000;margin-right:auto;}
+.chat-input{display:flex;align-items:center;padding:10px;border-top:1px solid #ddd;background:#fff;}
+.chat-input input{flex:1;padding:12px;border:1px solid #ccc;border-radius:20px;outline:none;}
+.chat-input button{margin-left:8px;padding:12px 20px;border:none;border-radius:20px;background:#000;color:#fff;cursor:pointer;}
+</style>
 </head>
 <body>
-  <div class="chat-container">
-    <div class="chat-header">Shopify Customer Support</div>
-    <div class="chat-messages" id="messages"></div>
-    <div class="chat-input">
-      <input id="messageInput" type="text" placeholder="Type a message...">
-      <button id="sendBtn">Send</button>
-    </div>
+<div class="chat-container">
+  <div class="chat-header">Shopify Customer Support</div>
+  <div class="chat-messages" id="messages"></div>
+  <div class="chat-input">
+    <input id="messageInput" type="text" placeholder="Type a message...">
+    <button id="sendBtn">Send</button>
   </div>
+</div>
 
-  <script>
-    const socket = io();
+<script>
+const socket=io();
+const urlParams=new URLSearchParams(window.location.search);
+let customerId=urlParams.get("id")||"cust_"+Math.random().toString(36).substr(2,9);
+window.history.replaceState({}, "", "?id="+customerId);
 
-    const urlParams = new URLSearchParams(window.location.search);
-    let customerId = urlParams.get("id");
-    const customerName = "{{ customer_name }}";
+socket.emit("join",{room:customerId,user_type:"customer"});
 
-    if (!customerId) {
-      customerId = "cust_" + Math.random().toString(36).substr(2, 9);
-      window.history.replaceState({}, "", "?id=" + customerId);
-    }
+const messagesDiv=document.getElementById("messages");
+const input=document.getElementById("messageInput");
+const sendBtn=document.getElementById("sendBtn");
 
-    socket.emit("join", { name: customerName });
+function addMessage(text,sender){
+  const div=document.createElement("div");
+  div.classList.add("chat-message",sender);
+  div.innerText=text;
+  messagesDiv.appendChild(div);
+  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+}
 
-    const messagesDiv = document.getElementById("messages");
-    const input = document.getElementById("messageInput");
-    const sendBtn = document.getElementById("sendBtn");
+sendBtn.addEventListener("click",()=>{
+  const msg=input.value.trim();
+  if(!msg) return;
+  addMessage(msg,"customer");
+  socket.emit("send_message",{room:customerId,sender:"customer",message:msg});
+  input.value="";
+});
 
-    // Load existing messages from server-rendered context
-    const initialMessages = {{ messages|tojson }};
-    initialMessages.forEach(m => {
-      addMessage(m.message, m.sender);
-    });
+input.addEventListener("keypress",(e)=>{ if(e.key==="Enter") sendBtn.click(); });
 
-    function addMessage(text, sender) {
-      const div = document.createElement("div");
-      div.classList.add("chat-message", sender === "admin" ? "admin" : "customer");
-      div.innerText = text;
-      messagesDiv.appendChild(div);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
+socket.on("load_history", data=>{
+  data.forEach(msg=>addMessage(msg.message,msg.sender));
+});
 
-    sendBtn.addEventListener("click", () => {
-      const msg = input.value.trim();
-      if (msg) {
-        addMessage(msg, "customer");
-        socket.emit("send_message", { sender: customerName, receiver: "admin", message: msg });
-        input.value = "";
-      }
-    });
-
-    input.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") sendBtn.click();
-    });
-
-    socket.on("receive_message", (data) => {
-      if (data.sender !== customerName) addMessage(data.message, "admin");
-    });
-  </script>
+socket.on("receive_message", data=>{
+  if(data.room===customerId) addMessage(data.message,data.sender);
+});
+</script>
 </body>
 </html>
