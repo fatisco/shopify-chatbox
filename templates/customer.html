@@ -4,126 +4,146 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Customer Chat</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
+      background: #f7f7f7;
       margin: 0;
       padding: 0;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
     }
 
-    #chat {
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 600px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      background: #0084ff;
+      color: #fff;
+      padding: 15px;
+      text-align: center;
+      font-size: 18px;
+    }
+
+    .chat-messages {
       flex: 1;
       padding: 10px;
       overflow-y: auto;
-      border-bottom: 1px solid #ccc;
     }
 
-    .message {
-      margin: 5px 0;
-      padding: 8px;
-      border-radius: 6px;
-      max-width: 80%;
+    .chat-message {
+      margin: 8px 0;
+      padding: 10px;
+      border-radius: 12px;
+      max-width: 75%;
+      word-wrap: break-word;
     }
 
     .customer {
-      background: #007bff;
-      color: white;
-      align-self: flex-end;
+      background: #0084ff;
+      color: #fff;
+      margin-left: auto;
     }
 
     .admin {
-      background: #f1f1f1;
-      color: black;
-      align-self: flex-start;
+      background: #f1f0f0;
+      color: #000;
+      margin-right: auto;
     }
 
     .chat-input {
       display: flex;
       align-items: center;
-      width: 100%;
-      box-sizing: border-box;
-      padding: 8px;
-      gap: 6px;
+      padding: 10px;
+      border-top: 1px solid #ddd;
+      background: #fff;
     }
 
     .chat-input input {
       flex: 1;
-      min-width: 0;
-      padding: 10px;
-      font-size: 14px;
+      padding: 12px;
       border: 1px solid #ccc;
-      border-radius: 6px;
-      box-sizing: border-box;
+      border-radius: 20px;
+      font-size: 14px;
+      outline: none;
     }
 
     .chat-input button {
-      padding: 10px 14px;
+      margin-left: 8px;
+      padding: 12px 20px; /* slightly taller & wider */
       font-size: 14px;
-      background-color: #007bff;
       border: none;
-      color: white;
-      border-radius: 6px;
+      border-radius: 20px;
+      background-color: #0084ff;
+      color: #fff;
       cursor: pointer;
-      white-space: nowrap;
+      flex-shrink: 0; /* prevents cut-off */
     }
 
-    /* Mobile fix */
-    @media (max-width: 480px) {
-      .chat-input {
-        padding: 6px;
-        gap: 4px;
-      }
-
-      .chat-input input {
-        font-size: 13px;
-        padding: 8px;
-      }
-
-      .chat-input button {
-        font-size: 13px;
-        padding: 8px 12px;
-      }
+    .chat-input button:active {
+      transform: scale(0.97);
     }
   </style>
 </head>
 <body>
-  <div id="chat"></div>
-  <div class="chat-input">
-    <input type="text" id="message" placeholder="Type your message...">
-    <button onclick="sendMessage()">Send</button>
+  <div class="chat-container">
+    <div class="chat-header">Customer Support</div>
+    <div class="chat-messages" id="messages"></div>
+    <div class="chat-input">
+      <input id="messageInput" type="text" placeholder="Type a message...">
+      <button id="sendBtn">Send</button>
+    </div>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    const chat = document.getElementById('chat');
-    const messageInput = document.getElementById('message');
 
-    socket.on('message', (data) => {
-      addMessage(data.text, data.sender);
-      if (data.sender === "admin") {
-        new Audio("/static/notification.mp3").play().catch(() => {});
+    const urlParams = new URLSearchParams(window.location.search);
+    let customerId = urlParams.get("id");
+
+    if (!customerId) {
+      customerId = "cust_" + Math.random().toString(36).substr(2, 9);
+      window.history.replaceState({}, "", "?id=" + customerId);
+    }
+
+    socket.emit("registerCustomer", customerId);
+
+    const messagesDiv = document.getElementById("messages");
+    const input = document.getElementById("messageInput");
+    const sendBtn = document.getElementById("sendBtn");
+
+    function addMessage(text, sender) {
+      const div = document.createElement("div");
+      div.classList.add("chat-message", sender);
+      div.innerText = text;
+      messagesDiv.appendChild(div);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    sendBtn.addEventListener("click", () => {
+      const msg = input.value.trim();
+      if (msg) {
+        addMessage(msg, "customer");
+        socket.emit("customerMessage", { customerId, msg });
+        input.value = "";
       }
     });
 
-    function sendMessage() {
-      const text = messageInput.value.trim();
-      if (text) {
-        socket.emit('message', { sender: 'customer', text });
-        messageInput.value = '';
-      }
-    }
+    input.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") sendBtn.click();
+    });
 
-    function addMessage(text, sender) {
-      const div = document.createElement('div');
-      div.classList.add('message', sender);
-      div.innerText = text;
-      chat.appendChild(div);
-      chat.scrollTop = chat.scrollHeight;
-    }
+    socket.on("adminMessage", (msg) => {
+      addMessage(msg, "admin");
+    });
   </script>
 </body>
 </html>
