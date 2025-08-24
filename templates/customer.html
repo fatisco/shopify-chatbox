@@ -4,38 +4,55 @@
   <title>Customer Chat</title>
   <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <style>
-    body { font-family: Arial; }
-    #messages { border: 1px solid #ccc; height: 300px; overflow-y: scroll; margin-bottom: 10px; padding: 5px; }
-    #input { width: 80%; }
+    body { font-family: Arial; background:#f7f7f7; margin:0; padding:0; }
+    .chat-container { max-width:600px; margin:20px auto; background:#fff; border:1px solid #ccc; border-radius:10px; overflow:hidden; }
+    .chat-header { background:#000; color:#fff; padding:10px; text-align:center; font-weight:bold; }
+    #messages { padding:10px; height:300px; overflow-y:scroll; }
+    .chat-message { margin:5px 0; padding:8px 12px; border-radius:12px; display:inline-block; word-wrap:break-word; max-width:none; }
+    .customer { background:#000; color:#fff; margin-left:auto; }
+    .admin { background:#f1f0f0; color:#000; margin-right:auto; }
+    .chat-input { display:flex; border-top:1px solid #ccc; padding:10px; }
+    #input { flex:1; padding:8px; border-radius:20px; border:1px solid #ccc; font-size:14px; }
+    button { margin-left:8px; padding:8px 16px; border:none; border-radius:20px; background:#000; color:#fff; cursor:pointer; }
+    button:active { transform:scale(0.97); }
   </style>
 </head>
 <body>
-  <h2>Customer Chat</h2>
-  <div id="messages"></div>
-  <input id="input" placeholder="Type a message..." />
-  <button onclick="sendMessage()">Send</button>
+  <div class="chat-container">
+    <div class="chat-header">Shopify Customer Support</div>
+    <div id="messages"></div>
+    <div class="chat-input">
+      <input id="input" placeholder="Type a message..." />
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
 
   <audio id="ping" src="https://www.soundjay.com/buttons/sounds/button-3.mp3"></audio>
 
   <script>
     const socket = io();
-    const customer_id = "{{ customer_id }}";
+    const customer_id = "{{ customer_id }}";  // passed from Flask
     const messages = document.getElementById("messages");
     const ping = document.getElementById("ping");
 
-    socket.emit("join", { room: customer_id });
+    // Join the room and notify admin
+    socket.emit("join", { room: customer_id, user_type: "customer" });
 
-    socket.on("message", (data) => {
+    // Listen for incoming messages
+    socket.on("receive_message", (data) => {
       const div = document.createElement("div");
-      div.textContent = data.sender + ": " + data.message;
+      div.classList.add("chat-message", data.sender === customer_id ? "customer" : "admin");
+      div.textContent = data.sender === customer_id ? data.message : data.message;
       messages.appendChild(div);
       messages.scrollTop = messages.scrollHeight;
-      ping.play(); // 🔔 notification sound
+      ping.play(); // play notification
     });
 
     function sendMessage() {
       const input = document.getElementById("input");
-      socket.emit("message", { sender: customer_id, message: input.value, room: customer_id });
+      const msg = input.value.trim();
+      if (!msg) return;
+      socket.emit("send_message", { sender: customer_id, message: msg, room: customer_id });
       input.value = "";
     }
   </script>
