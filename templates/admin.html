@@ -13,15 +13,16 @@ body { font-family: Arial; margin:0; display:flex; height:100vh; }
 .chat-area { flex:1; display:flex; flex-direction:column; }
 .chat-header { background:#000; color:#fff; padding:15px; text-align:center; font-size:18px; }
 .chat-messages { flex:1; padding:10px; overflow-y:auto; }
-.chat-message { margin:8px 0; padding:10px; border-radius:12px; max-width:70%; word-wrap:break-word; }
+.chat-message { display:inline-block; margin:5px 0; padding:8px 12px; border-radius:12px; word-wrap:break-word; max-width:70%; }
 .customer { background:#f1f0f0; margin-right:auto; }
 .admin { background:#000; color:#fff; margin-left:auto; }
-.chat-input { display:flex; padding:10px; border-top:1px solid #ddd; background:#fff; }
+.chat-input { display:flex; border-top:1px solid #ddd; padding:10px; }
 .chat-input input { flex:1; padding:12px; border:1px solid #ccc; border-radius:20px; outline:none; }
-.chat-input button { margin-left:8px; padding:12px 20px; border:none; border-radius:20px; background:#000; color:#fff; cursor:pointer; }
+.chat-input button { margin-left:8px; padding:12px 20px; border:none; border-radius:20px; background:#000; color:#fff; cursor:pointer; flex-shrink:0; }
 </style>
 </head>
 <body>
+
 <div class="sidebar">
   <h2>Active Customers</h2>
   <div id="customerList"></div>
@@ -31,7 +32,7 @@ body { font-family: Arial; margin:0; display:flex; height:100vh; }
   <div class="chat-header">Shopify Customer Support</div>
   <div class="chat-messages" id="messages"></div>
   <div class="chat-input">
-    <input id="messageInput" type="text" placeholder="Type a message...">
+    <input id="messageInput" placeholder="Type a message..." />
     <button id="sendBtn">Send</button>
   </div>
 </div>
@@ -48,11 +49,11 @@ const messageHistory = {};
 function renderCustomers(customers){
   customerListDiv.innerHTML="";
   customers.forEach(cust=>{
-    const div=document.createElement("div");
+    const div = document.createElement("div");
     div.classList.add("customer-item");
     if(cust===activeCustomer) div.classList.add("active");
-    div.innerText=cust;
-    div.onclick=()=>{ activeCustomer=cust; renderCustomers(customers); renderMessages(); }
+    div.innerText = cust;
+    div.onclick = ()=>{ activeCustomer=cust; renderCustomers(customers); renderMessages(); };
     customerListDiv.appendChild(div);
   });
 }
@@ -61,41 +62,43 @@ function renderMessages(){
   messagesDiv.innerHTML="";
   if(!activeCustomer) return;
   (messageHistory[activeCustomer]||[]).forEach(msg=>{
-    const div=document.createElement("div");
+    const div = document.createElement("div");
     div.classList.add("chat-message", msg.sender);
-    div.innerText=msg.message;
+    div.innerText = msg.message;
     messagesDiv.appendChild(div);
   });
-  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
 sendBtn.addEventListener("click", ()=>{
   if(!activeCustomer) return;
-  const msg=input.value.trim();
+  const msg = input.value.trim();
   if(!msg) return;
   const messageObj={message:msg, sender:"admin"};
   messageHistory[activeCustomer]=messageHistory[activeCustomer]||[];
   messageHistory[activeCustomer].push(messageObj);
   renderMessages();
-  socket.emit("send_message",{room:activeCustomer, sender:"admin", message:msg});
+  socket.emit("send_message",{ room:activeCustomer, sender:"admin", message:msg });
   input.value="";
 });
+input.addEventListener("keypress", e=>{ if(e.key==="Enter") sendBtn.click(); });
 
-input.addEventListener("keypress",(e)=>{ if(e.key==="Enter") sendBtn.click(); });
-
+// Load message history per customer
 socket.on("load_history", data=>{
   if(!activeCustomer) return;
   messageHistory[activeCustomer]=data;
   renderMessages();
 });
 
+// Receive new messages
 socket.on("receive_message", data=>{
-  const room=data.room||data.room_id||data.room;
+  const room=data.room;
   messageHistory[room]=messageHistory[room]||[];
   messageHistory[room].push({message:data.message, sender:data.sender});
   if(room===activeCustomer) renderMessages();
 });
 
+// Update active customer list
 socket.on("active_customers", data=>{
   renderCustomers(data.customers);
 });
