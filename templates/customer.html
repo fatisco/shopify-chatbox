@@ -8,10 +8,9 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #111;
+      background: #f7f7f7;
       margin: 0;
       padding: 0;
-      color: #eee;
     }
 
     .chat-container {
@@ -20,7 +19,8 @@
       height: 100vh;
       max-width: 600px;
       margin: 0 auto;
-      background: #222;
+      background: #fff;
+      border: 1px solid #ddd;
       border-radius: 10px;
       overflow: hidden;
     }
@@ -31,7 +31,6 @@
       padding: 15px;
       text-align: center;
       font-size: 18px;
-      font-weight: bold;
     }
 
     .chat-messages {
@@ -41,22 +40,22 @@
     }
 
     .chat-message {
-      margin: 6px 0;
+      margin: 8px 0;
       padding: 10px;
       border-radius: 12px;
-      max-width: 70%;
+      max-width: 75%;
       word-wrap: break-word;
     }
 
     .customer {
-      background: #555;
+      background: #333;
       color: #fff;
       margin-left: auto;
     }
 
     .admin {
-      background: #333;
-      color: #eee;
+      background: #ddd;
+      color: #000;
       margin-right: auto;
     }
 
@@ -64,28 +63,26 @@
       display: flex;
       align-items: center;
       padding: 10px;
-      border-top: 1px solid #333;
-      background: #222;
+      border-top: 1px solid #ddd;
+      background: #fff;
     }
 
     .chat-input input {
       flex: 1;
       padding: 12px;
-      border: 1px solid #555;
+      border: 1px solid #ccc;
       border-radius: 20px;
       font-size: 14px;
       outline: none;
-      background: #111;
-      color: #eee;
     }
 
     .chat-input button {
       margin-left: 8px;
-      padding: 12px 22px;
+      padding: 12px 20px;
       font-size: 14px;
       border: none;
       border-radius: 20px;
-      background-color: #444;
+      background-color: #000;
       color: #fff;
       cursor: pointer;
       flex-shrink: 0;
@@ -110,10 +107,12 @@
     const socket = io();
 
     const urlParams = new URLSearchParams(window.location.search);
-    let customerName = urlParams.get("id");
-    if (!customerName) {
-      customerName = "cust_" + Math.random().toString(36).substr(2, 9);
-      window.history.replaceState({}, "", "?id=" + customerName);
+    let customerId = urlParams.get("id");
+    const customerName = "{{ customer_name }}";
+
+    if (!customerId) {
+      customerId = "cust_" + Math.random().toString(36).substr(2, 9);
+      window.history.replaceState({}, "", "?id=" + customerId);
     }
 
     socket.emit("join", { name: customerName });
@@ -122,9 +121,15 @@
     const input = document.getElementById("messageInput");
     const sendBtn = document.getElementById("sendBtn");
 
+    // Load existing messages from server-rendered context
+    const initialMessages = {{ messages|tojson }};
+    initialMessages.forEach(m => {
+      addMessage(m.message, m.sender);
+    });
+
     function addMessage(text, sender) {
       const div = document.createElement("div");
-      div.classList.add("chat-message", sender);
+      div.classList.add("chat-message", sender === "admin" ? "admin" : "customer");
       div.innerText = text;
       messagesDiv.appendChild(div);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -144,8 +149,7 @@
     });
 
     socket.on("receive_message", (data) => {
-      const { sender, receiver, message } = data;
-      if (sender === "admin") addMessage(message, "admin");
+      if (data.sender !== customerName) addMessage(data.message, "admin");
     });
   </script>
 </body>
