@@ -12,14 +12,14 @@
       padding: 0;
       display: flex;
       height: 100vh;
-      background: #111;
-      color: #eee;
+      background: #f7f7f7;
     }
 
     .sidebar {
       width: 250px;
-      background: #222;
-      border-right: 1px solid #333;
+      background: #333;
+      color: #fff;
+      border-right: 1px solid #444;
       padding: 10px;
       overflow-y: auto;
     }
@@ -31,30 +31,20 @@
 
     .customer-item {
       padding: 10px;
-      border-bottom: 1px solid #333;
+      border-bottom: 1px solid #444;
       cursor: pointer;
-      transition: background 0.3s;
     }
 
     .customer-item.active {
-      background: #444;
+      background: #000;
       color: #fff;
-    }
-
-    .customer-item.new-message {
-      animation: flash 1s infinite alternate;
-    }
-
-    @keyframes flash {
-      0% { background: #444; }
-      100% { background: #666; }
     }
 
     .chat-area {
       flex: 1;
       display: flex;
       flex-direction: column;
-      background: #111;
+      background: #fff;
     }
 
     .chat-header {
@@ -63,7 +53,6 @@
       padding: 15px;
       text-align: center;
       font-size: 18px;
-      font-weight: bold;
     }
 
     .chat-messages {
@@ -73,23 +62,22 @@
     }
 
     .chat-message {
-      margin: 6px 0;
+      margin: 8px 0;
       padding: 10px;
       border-radius: 12px;
-      max-width: 70%;
+      max-width: 75%;
       word-wrap: break-word;
-      line-height: 1.4;
     }
 
     .customer {
       background: #333;
-      color: #eee;
+      color: #fff;
       margin-right: auto;
     }
 
     .admin {
-      background: #555;
-      color: #fff;
+      background: #ddd;
+      color: #000;
       margin-left: auto;
     }
 
@@ -97,28 +85,26 @@
       display: flex;
       align-items: center;
       padding: 10px;
-      border-top: 1px solid #333;
-      background: #222;
+      border-top: 1px solid #ddd;
+      background: #fff;
     }
 
     .chat-input input {
       flex: 1;
       padding: 12px;
-      border: 1px solid #555;
+      border: 1px solid #ccc;
       border-radius: 20px;
       font-size: 14px;
       outline: none;
-      background: #111;
-      color: #eee;
     }
 
     .chat-input button {
       margin-left: 8px;
-      padding: 12px 22px;
+      padding: 12px 20px;
       font-size: 14px;
       border: none;
       border-radius: 20px;
-      background-color: #444;
+      background-color: #000;
       color: #fff;
       cursor: pointer;
       flex-shrink: 0;
@@ -144,9 +130,6 @@
     </div>
   </div>
 
-  <!-- Notification sound -->
-  <audio id="notifySound" src="https://www.myinstants.com/media/sounds/notification.mp3" preload="auto"></audio>
-
   <script>
     const socket = io();
 
@@ -155,46 +138,46 @@
     const messagesDiv = document.getElementById("messages");
     const input = document.getElementById("messageInput");
     const sendBtn = document.getElementById("sendBtn");
-    const notifySound = document.getElementById("notifySound");
 
     const messageHistory = {};
 
+    // Render customers sidebar
     function renderCustomers(customers) {
       customerListDiv.innerHTML = "";
-      customers.forEach((cust) => {
+      customers.forEach(cust => {
         const div = document.createElement("div");
         div.classList.add("customer-item");
         if (cust === activeCustomer) div.classList.add("active");
-        if (messageHistory[cust]?.newMessage) div.classList.add("new-message");
         div.innerText = cust;
         div.onclick = () => {
           activeCustomer = cust;
-          if (messageHistory[cust]) messageHistory[cust].newMessage = false;
           renderCustomers(customers);
           renderMessages();
+          socket.emit("join", { name: activeCustomer });
         };
         customerListDiv.appendChild(div);
       });
     }
 
+    // Render chat messages for active customer
     function renderMessages() {
       messagesDiv.innerHTML = "";
       if (!activeCustomer) return;
-      (messageHistory[activeCustomer] || []).forEach((msg) => {
+      (messageHistory[activeCustomer] || []).forEach(msg => {
         const div = document.createElement("div");
-        div.classList.add("chat-message", msg.sender);
-        div.innerText = msg.text;
+        div.classList.add("chat-message", msg.sender === "admin" ? "admin" : "customer");
+        div.innerText = msg.message;
         messagesDiv.appendChild(div);
       });
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
+    // Send message
     sendBtn.addEventListener("click", () => {
       const msg = input.value.trim();
       if (msg && activeCustomer) {
-        const messageObj = { text: msg, sender: "admin" };
         messageHistory[activeCustomer] = messageHistory[activeCustomer] || [];
-        messageHistory[activeCustomer].push(messageObj);
+        messageHistory[activeCustomer].push({ message: msg, sender: "admin" });
         renderMessages();
         socket.emit("send_message", { sender: "admin", receiver: activeCustomer, message: msg });
         input.value = "";
@@ -205,25 +188,25 @@
       if (e.key === "Enter") sendBtn.click();
     });
 
-    socket.on("active_customers", (data) => {
-      renderCustomers(data.customers);
+    // Listen for customer messages
+    socket.on("receive_message", data => {
+      const sender = data.sender;
+      const receiver = data.receiver;
+      const msg = data.message;
+
+      const customerName = sender === "admin" ? receiver : sender;
+
+      messageHistory[customerName] = messageHistory[customerName] || [];
+      messageHistory[customerName].push({ message: msg, sender: sender });
+
+      if (activeCustomer === customerName) renderMessages();
+      renderCustomers(Object.keys(messageHistory));
     });
 
-    socket.on("receive_message", (data) => {
-      const { sender, receiver, message } = data;
-      const cust = sender === "admin" ? receiver : sender;
-
-      messageHistory[cust] = messageHistory[cust] || [];
-      messageHistory[cust].push({ text: message, sender: sender === "admin" ? "admin" : "customer" });
-
-      // Flash sidebar & play sound if new message for inactive customer
-      if (cust !== activeCustomer) {
-        messageHistory[cust].newMessage = true;
-        notifySound.play();
-      }
-
-      renderMessages();
-      renderCustomers(Object.keys(messageHistory));
+    // Update active customers list
+    socket.on("active_customers", data => {
+      const customers = data.customers;
+      renderCustomers(customers);
     });
   </script>
 </body>
