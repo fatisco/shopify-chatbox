@@ -6,140 +6,135 @@
 <title>Shopify Customer Support</title>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <style>
-body { font-family: Arial, sans-serif; margin:0; background:#f7f7f7; display:flex; justify-content:center; }
+body {
+    font-family: Arial, sans-serif;
+    margin:0;
+    padding:0;
+    background:#f7f7f7;
+}
 .chat-container {
-  display:flex;
-  flex-direction:column;
-  width:100%;
-  max-width:600px;
-  height:100vh;
-  background:#fff;
-  border:1px solid #ddd;
-  border-radius:10px;
-  overflow:hidden;
+    max-width: 600px;
+    margin: 10px auto;
+    border:1px solid #ddd;
+    border-radius:10px;
+    background:#fff;
+    display:flex;
+    flex-direction:column;
+    height: 80vh;
 }
 .chat-header {
-  background:#000;
-  color:#fff;
-  padding:15px;
-  text-align:center;
-  font-size:18px;
+    background:#000;
+    color:#fff;
+    padding:12px;
+    text-align:center;
+    font-size:18px;
 }
 .chat-messages {
-  flex:1;
-  padding:10px;
-  overflow-y:auto;
-  display:flex;
-  flex-direction:column;
+    flex:1;
+    padding:10px;
+    overflow-y:auto;
 }
 .chat-message {
-  display:inline-block;
-  padding:8px 12px;
-  margin:4px 0;
-  border-radius:12px;
-  max-width:75%;
-  word-wrap:break-word;
+    margin:5px 0;
+    padding:8px 12px;
+    border-radius:12px;
+    display:inline-block;
+    word-wrap: break-word;
+    max-width: 80%;
 }
-.customer { background:#000; color:#fff; align-self:flex-end; }
-.admin { background:#f1f0f0; color:#000; align-self:flex-start; }
+.customer {
+    background:#000;
+    color:#fff;
+    margin-left:auto;
+}
+.admin {
+    background:#f1f0f0;
+    color:#000;
+    margin-right:auto;
+}
 .chat-input {
-  display:flex;
-  padding:10px;
-  border-top:1px solid #ddd;
-  background:#fff;
+    display:flex;
+    padding:10px;
+    border-top:1px solid #ddd;
+    background:#fff;
 }
 .chat-input input {
-  flex:1;
-  padding:10px 12px;
-  border-radius:20px;
-  border:1px solid #ccc;
-  outline:none;
+    flex:1;
+    padding:10px;
+    border:1px solid #ccc;
+    border-radius:20px;
+    outline:none;
+    font-size:14px;
 }
 .chat-input button {
-  margin-left:8px;
-  padding:10px 16px;
-  border-radius:20px;
-  border:none;
-  background:#000;
-  color:#fff;
-  cursor:pointer;
+    margin-left:8px;
+    padding:10px 18px;
+    border:none;
+    border-radius:20px;
+    background:#000;
+    color:#fff;
+    cursor:pointer;
 }
+.chat-input button:active { transform: scale(0.97); }
 </style>
 </head>
 <body>
-
 <div class="chat-container">
-  <div class="chat-header">Shopify Customer Support</div>
-  <div class="chat-messages" id="messages"></div>
-  <div class="chat-input">
-    <input id="messageInput" type="text" placeholder="Type a message..." />
-    <button id="sendBtn">Send</button>
-  </div>
+    <div class="chat-header">Shopify Customer Support</div>
+    <div class="chat-messages" id="messages"></div>
+    <div class="chat-input">
+        <input id="messageInput" type="text" placeholder="Type a message...">
+        <button id="sendBtn">Send</button>
+    </div>
 </div>
-
-<audio id="ping" src="https://www.soundjay.com/buttons/sounds/button-3.mp3" preload="auto"></audio>
 
 <script>
 const socket = io();
+const customer_id = "{{ customer_id }}";
 const messagesDiv = document.getElementById("messages");
 const input = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
-const ping = document.getElementById("ping");
-
-// Identify customer
-let customerId = "{{ customer_id }}";
-if(!customerId){
-  customerId = "cust_" + Math.random().toString(36).substr(2,9);
-  window.history.replaceState({}, "", "?id=" + customerId);
-}
 
 // Join room
-socket.emit("join", { room: customerId });
+socket.emit("join", { room: customer_id });
 
-// Local chat history
-const messageHistory = [];
-
-// Render messages
-function renderMessages() {
-  messagesDiv.innerHTML = "";
-  messageHistory.forEach(msg => {
+// Render message
+function addMessage(text, sender){
     const div = document.createElement("div");
-    div.classList.add("chat-message", msg.sender === "admin" ? "admin" : "customer");
-    div.innerText = msg.message;
+    div.classList.add("chat-message", sender);
+    div.textContent = text;
     messagesDiv.appendChild(div);
-  });
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
+// Load history
+socket.on("load_history", data=>{
+    if(data.room !== customer_id) return;
+    messagesDiv.innerHTML = "";
+    data.messages.forEach(msg=>{
+        addMessage(msg.message, msg.sender === customer_id ? "customer" : "admin");
+    });
+});
+
+// Receive message
+socket.on("receive_message", data=>{
+    if(data.room !== customer_id) return;
+    const senderClass = data.sender === customer_id ? "customer" : "admin";
+    addMessage(data.message, senderClass);
+});
+
 // Send message
-sendBtn.addEventListener("click", () => {
-  const msg = input.value.trim();
-  if(!msg) return;
-  messageHistory.push({message: msg, sender:"customer"});
-  renderMessages();
-  socket.emit("send_message", {room: customerId, sender: "customer", message: msg});
-  input.value = "";
+sendBtn.addEventListener("click", ()=>{
+    const msg = input.value.trim();
+    if(!msg) return;
+    addMessage(msg, "customer");
+    socket.emit("send_message", { room: customer_id, sender: customer_id, message: msg });
+    input.value="";
 });
 
-input.addEventListener("keypress", e => { if(e.key==="Enter") sendBtn.click(); });
-
-// Receive messages from admin
-socket.on("receive_message", data => {
-  if(data.room === customerId){
-    messageHistory.push({message: data.message, sender:"admin"});
-    renderMessages();
-    ping.play();
-  }
-});
-
-// Load historical messages if server sends them
-socket.on("load_history", data => {
-  if(data.room === customerId){
-    data.messages.forEach(m => messageHistory.push(m));
-    renderMessages();
-  }
+input.addEventListener("keypress", e=>{
+    if(e.key==="Enter") sendBtn.click();
 });
 </script>
-
 </body>
 </html>
