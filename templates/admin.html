@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,14 +11,14 @@ body { font-family: Arial; margin:0; display:flex; height:100vh; }
 .customer-item { padding:10px; border-bottom:1px solid #ddd; cursor:pointer; }
 .customer-item.active { background:#000; color:#fff; }
 .chat-area { flex:1; display:flex; flex-direction:column; }
-.chat-header { background:#000; color:#fff; padding:15px; text-align:center; font-size:18px; }
+.chat-header { background:#000; color:#fff; text-align:center; padding:15px; font-size:18px; }
 .chat-messages { flex:1; padding:10px; overflow-y:auto; }
-.chat-message { margin:8px 0; padding:10px; border-radius:12px; max-width:70%; word-wrap:break-word; display:inline-block; }
+.chat-message { display:inline-block; padding:8px 12px; margin:4px 0; border-radius:12px; max-width:70%; word-wrap:break-word; }
 .customer { background:#f1f0f0; margin-right:auto; }
 .admin { background:#000; color:#fff; margin-left:auto; }
-.chat-input { display:flex; padding:10px; border-top:1px solid #ddd; background:#fff; }
-.chat-input input { flex:1; padding:12px; border:1px solid #ccc; border-radius:20px; outline:none; }
-.chat-input button { margin-left:8px; padding:12px 20px; border:none; border-radius:20px; background:#000; color:#fff; cursor:pointer; }
+.chat-input { display:flex; padding:10px; border-top:1px solid #ddd; }
+.chat-input input { flex:1; padding:10px 12px; border-radius:20px; border:1px solid #ccc; outline:none; }
+.chat-input button { margin-left:8px; padding:10px 16px; border-radius:20px; border:none; background:#000; color:#fff; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -26,12 +26,11 @@ body { font-family: Arial; margin:0; display:flex; height:100vh; }
   <h2>Active Customers</h2>
   <div id="customerList"></div>
 </div>
-
 <div class="chat-area">
   <div class="chat-header">Shopify Customer Support</div>
   <div class="chat-messages" id="messages"></div>
   <div class="chat-input">
-    <input id="messageInput" type="text" placeholder="Type a message...">
+    <input id="messageInput" type="text" placeholder="Type a message..." />
     <button id="sendBtn">Send</button>
   </div>
 </div>
@@ -45,16 +44,14 @@ const input = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 const messageHistory = {};
 
-socket.emit("join", { room:"admin", user_type:"admin" });
-
 function renderCustomers(customers){
   customerListDiv.innerHTML="";
-  customers.forEach(cust=>{
+  customers.forEach(c=>{
     const div=document.createElement("div");
     div.classList.add("customer-item");
-    if(cust===activeCustomer) div.classList.add("active");
-    div.innerText=cust;
-    div.onclick=()=>{ activeCustomer=cust; renderCustomers(customers); renderMessages(); }
+    if(c===activeCustomer) div.classList.add("active");
+    div.innerText=c;
+    div.onclick=()=>{ activeCustomer=c; renderCustomers(customers); renderMessages(); }
     customerListDiv.appendChild(div);
   });
 }
@@ -65,41 +62,41 @@ function renderMessages(){
   (messageHistory[activeCustomer]||[]).forEach(msg=>{
     const div=document.createElement("div");
     div.classList.add("chat-message", msg.sender);
-    div.innerText=msg.message;
+    div.innerText = msg.message;
     messagesDiv.appendChild(div);
   });
-  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
 sendBtn.addEventListener("click", ()=>{
   if(!activeCustomer) return;
   const msg=input.value.trim();
   if(!msg) return;
-  const messageObj={message:msg, sender:"admin"};
   messageHistory[activeCustomer]=messageHistory[activeCustomer]||[];
-  messageHistory[activeCustomer].push(messageObj);
+  messageHistory[activeCustomer].push({message: msg, sender:"admin"});
   renderMessages();
-  socket.emit("send_message",{room:activeCustomer, sender:"admin", message:msg});
+  socket.emit("send_message", { room:activeCustomer, sender:"admin", message: msg });
   input.value="";
 });
 
-input.addEventListener("keypress",(e)=>{ if(e.key==="Enter") sendBtn.click(); });
+input.addEventListener("keypress", e=>{ if(e.key==="Enter") sendBtn.click(); });
 
 socket.on("load_history", data=>{
   if(!activeCustomer) return;
-  messageHistory[activeCustomer]=data;
+  messageHistory[activeCustomer] = data;
   renderMessages();
 });
 
 socket.on("receive_message", data=>{
-  const room=data.room;
-  messageHistory[room]=messageHistory[room]||[];
-  messageHistory[room].push({message:data.message, sender:data.sender});
+  const room = data.room;
+  messageHistory[room] = messageHistory[room] || [];
+  messageHistory[room].push({message: data.message, sender: data.sender});
   if(room===activeCustomer) renderMessages();
 });
 
 socket.on("active_customers", data=>{
-  renderCustomers(data.customers);
+  if(!activeCustomer && data.room) activeCustomer = data.room;
+  renderCustomers([data.room]);
 });
 </script>
 </body>
