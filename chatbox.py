@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import sqlite3
 import os
 from datetime import datetime
@@ -67,6 +67,19 @@ def get_customers():
     conn.close()
     return rows
 
+def get_unread_count(room, admin_joined_time=None):
+    """Get count of messages since admin last joined (optional enhancement)"""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    if admin_joined_time:
+        c.execute("SELECT COUNT(*) FROM messages WHERE room=? AND ts > ? AND sender != 'admin'", 
+                 (room, admin_joined_time))
+    else:
+        c.execute("SELECT COUNT(*) FROM messages WHERE room=? AND sender != 'admin'", (room,))
+    count = c.fetchone()[0]
+    conn.close()
+    return count
+
 # --- Routes ---
 @app.route("/")
 def landing():
@@ -81,38 +94,103 @@ def admin():
     return render_template("admin.html")
 
 # --- Socket.IO ---
+@socketio.on("connect")
+def handle_connect():
+    print(f"Client connected: {request.sid}")
+
+@socketio.on("disconnect")
+def handle_disconnect():
+    print(f"Client disconnected: {request.sid}")
+
 @socketio.on("join")
 def handle_join(data):
     room = data.get("room")
     if not room:
         return
+    
     join_room(room)
     update_customer(room)
+    print(f"Client {request.sid} joined room: {room}")
 
-    # send chat history to this socket
+    # send chat history to this socket only
     history = get_messages(room)
     emit("load_history", {"room": room, "messages": history})
 
-    # update active customers for all admins
-    emit("active_customers", {"customers": get_customers()}, broadcast=True)
+    # update active customers for all clients (so admin sees updated list)
+    socketio.emit("active_customers", {"customers": get_customers()})
 
 @socketio.on("send_message")
 def handle_message(data):
     room = data.get("room")
     sender = data.get("sender")
     message = data.get("message")
-    if not (room and message):
+    
+    if not (room and sender and message):
+        print(f"Invalid message data: {data}")
         return
 
-    # save to DB
+    # Validate message content
+    message = message.strip()
+    if not message:
+        return
+
+    print(f"Message from {sender} in room {room}: {message}")
+    
+    # save to DB first
     save_message(room, sender, message)
     update_customer(room)
 
-    # send to everyone in the room
-    emit("receive_message", {"room": room, "sender": sender, "message": message}, room=room)
+    # send to everyone in the room (including sender)
+    socketio.emit("receive_message", {
+        "room": room, 
+        "sender": sender, 
+        "message": message
+    }, room=room)
 
-    # update admin active customers
-    emit("active_customers", {"customers": get_customers()}, broadcast=True)
+    # Clear typing indicator when message is sent
+    socketio.emit("user_stopped_typing", {
+        "room": room,
+        "sender": sender
+    }, room=room)
+
+    # If this is a customer message, notify all admins (even if they're not in the room)
+    if sender != "admin":
+        socketio.emit("new_customer_message", {
+            "customer": room,
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        })
+
+    # update admin active customers list
+    socketio.emit("active_customers", {"customers": get_customers()})
+
+@socketio.on("typing")
+def handle_typing(data):
+    room = data.get("room")
+    sender = data.get("sender")
+    
+    if not (room and sender):
+        return
+    
+    # Broadcast typing indicator to others in the room
+    socketio.emit("user_typing", {
+        "room": room,
+        "sender": sender
+    }, room=room)
+
+@socketio.on("stop_typing")
+def handle_stop_typing(data):
+    room = data.get("room")
+    sender = data.get("sender")
+    
+    if not (room and sender):
+        return
+    
+    # Broadcast stop typing to others in the room
+    socketio.emit("user_stopped_typing", {
+        "room": room,
+        "sender": sender
+    }, room=room)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
