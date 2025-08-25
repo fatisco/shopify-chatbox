@@ -20,6 +20,39 @@ body { font-family: Arial; margin:0; display:flex; height:100vh; }
 .chat-input input { flex:1; padding:10px; border:1px solid #ccc; border-radius:20px; outline:none; font-size:14px; }
 .chat-input button { margin-left:8px; padding:10px 18px; border:none; border-radius:20px; background:#000; color:#fff; cursor:pointer; }
 .chat-input button:active { transform: scale(0.97); }
+.typing-indicator {
+    padding: 8px 12px;
+    margin: 5px 0;
+    background: #f1f0f0;
+    border-radius: 12px;
+    font-style: italic;
+    color: #666;
+    max-width: 80%;
+    animation: fadeIn 0.3s ease-in;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.typing-dots {
+    display: inline-block;
+}
+.typing-dots span {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #666;
+    margin: 0 1px;
+    animation: typingDots 1.4s infinite;
+}
+.typing-dots span:nth-child(1) { animation-delay: 0s; }
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingDots {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-10px); }
+}
 </style>
 </head>
 <body>
@@ -38,6 +71,11 @@ body { font-family: Arial; margin:0; display:flex; height:100vh; }
     </div>
 </div>
 
+<!-- Hidden audio element for notification -->
+<audio id="notificationSound" preload="auto">
+    <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSsFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhAjuR2e7Gd..." type="audio/wav">
+</audio>
+
 <script>
 const socket = io();
 let activeCustomer = null;
@@ -46,6 +84,32 @@ const messagesDiv = document.getElementById("messages");
 const input = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 const messageHistory = {};
+const notificationSound = document.getElementById("notificationSound");
+let typingTimeout = null;
+let typingIndicators = new Set();
+
+// Create notification sound using Web Audio API as fallback
+function createNotificationSound() {
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (e) {
+        console.log('Audio notification not available');
+    }
+}
 
 // Render customers
 function renderCustomers(customers){
@@ -76,6 +140,15 @@ function renderMessages(){
         div.innerText=msg.message;
         messagesDiv.appendChild(div);
     });
+    
+    // Add typing indicator if someone is typing
+    if(typingIndicators.has(activeCustomer)) {
+        const typingDiv = document.createElement("div");
+        typingDiv.classList.add("typing-indicator");
+        typingDiv.innerHTML = `${activeCustomer} is typing<span class="typing-dots"><span></span><span></span><span></span></span>`;
+        messagesDiv.appendChild(typingDiv);
+    }
+    
     messagesDiv.scrollTop=messagesDiv.scrollHeight;
 }
 
@@ -84,11 +157,26 @@ sendBtn.addEventListener("click", ()=>{
     if(!activeCustomer) return;
     const msg = input.value.trim();
     if(!msg) return;
-    messageHistory[activeCustomer]=messageHistory[activeCustomer]||[];
-    messageHistory[activeCustomer].push({message:msg, sender:"admin"});
-    renderMessages();
+    
+    // Send to server first, don't add to UI yet
     socket.emit("send_message", { room: activeCustomer, sender:"admin", message:msg });
     input.value="";
+});
+
+// Handle typing detection
+input.addEventListener("input", ()=>{
+    if(!activeCustomer) return;
+    
+    // Send typing event
+    socket.emit("typing", { room: activeCustomer, sender: "admin" });
+    
+    // Clear previous timeout
+    if(typingTimeout) clearTimeout(typingTimeout);
+    
+    // Set timeout to stop typing after 2 seconds of no input
+    typingTimeout = setTimeout(()=>{
+        socket.emit("stop_typing", { room: activeCustomer, sender: "admin" });
+    }, 2000);
 });
 
 input.addEventListener("keypress", e=>{ if(e.key==="Enter") sendBtn.click(); });
@@ -108,12 +196,44 @@ socket.on("receive_message", data=>{
     const room = data.room;
     messageHistory[room]=messageHistory[room]||[];
     messageHistory[room].push({message:data.message, sender:data.sender==="admin"?"admin":"customer"});
+    
+    // Play notification sound if it's a customer message and not from the currently active customer
+    if(data.sender !== "admin" && room !== activeCustomer) {
+        createNotificationSound();
+    }
+    
     if(room===activeCustomer) renderMessages();
 });
 
 // Active customers
 socket.on("active_customers", data=>{
     renderCustomers(data.customers);
+});
+
+// New customer message notification (for messages when admin not in room)
+socket.on("new_customer_message", data=>{
+    // Play notification sound for any customer message
+    createNotificationSound();
+    
+    // Update the customer list to show this customer has new messages
+    console.log(`New message from ${data.customer}: ${data.message}`);
+});
+
+// Typing indicators
+socket.on("user_typing", data=>{
+    if(data.room === activeCustomer && data.sender !== "admin") {
+        typingIndicators.add(data.sender);
+        renderMessages();
+    }
+});
+
+socket.on("user_stopped_typing", data=>{
+    if(data.sender !== "admin") {
+        typingIndicators.delete(data.sender);
+        if(data.room === activeCustomer) {
+            renderMessages();
+        }
+    }
 });
 </script>
 </body>
