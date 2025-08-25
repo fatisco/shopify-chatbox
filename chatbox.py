@@ -10,7 +10,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 DB_FILE = os.path.join(os.path.dirname(__file__), "chatbox.db")
 
-# --- DB setup ---
+# --- DB Setup ---
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -23,9 +23,19 @@ def init_db():
             ts DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE,
+            last_seen DATETIME
+        )
+    """)
     conn.commit()
     conn.close()
 
+init_db()
+
+# --- DB helpers ---
 def save_message(room, sender, message):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -33,57 +43,77 @@ def save_message(room, sender, message):
     conn.commit()
     conn.close()
 
-def load_messages(room):
+def get_messages(room):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT sender, message FROM messages WHERE room = ? ORDER BY id ASC", (room,))
+    c.execute("SELECT sender, message FROM messages WHERE room=? ORDER BY id ASC", (room,))
     rows = c.fetchall()
     conn.close()
     return [{"sender": r[0], "message": r[1]} for r in rows]
 
-init_db()
+def update_customer(name):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO customers (id, name, last_seen) VALUES ((SELECT id FROM customers WHERE name=?), ?, ?)",
+              (name, name, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def get_customers():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT name FROM customers ORDER BY last_seen DESC")
+    rows = [r[0] for r in c.fetchall()]
+    conn.close()
+    return rows
 
 # --- Routes ---
 @app.route("/")
-def index():
+def landing():
     return render_template("landing.html")
+
+@app.route("/customer/<customer_id>")
+def customer(customer_id):
+    return render_template("customer.html", customer_id=customer_id)
 
 @app.route("/admin")
 def admin():
     return render_template("admin.html")
 
-@app.route("/customer/<room_id>")
-def customer(room_id):
-    return render_template("customer.html", room_id=room_id)
-
-# --- Socket events ---
+# --- Socket.IO ---
 @socketio.on("join")
-def on_join(data):
+def handle_join(data):
     room = data.get("room")
     if not room:
         return
     join_room(room)
+    update_customer(room)
 
-    # load all history for this room
-    history = load_messages(room)
-    emit("load_history", history, room=request.sid)
+    # send chat history to this socket
+    history = get_messages(room)
+    emit("load_history", {"room": room, "messages": history})
+
+    # update active customers for all admins
+    emit("active_customers", {"customers": get_customers()}, broadcast=True)
 
 @socketio.on("send_message")
-def handle_send_message(data):
+def handle_message(data):
     room = data.get("room")
-    sender = data.get("sender", "Unknown")
-    message = data.get("message", "").strip()
+    sender = data.get("sender")
+    message = data.get("message")
     if not (room and message):
         return
 
+    # save to DB
     save_message(room, sender, message)
+    update_customer(room)
 
-    # broadcast to all participants (including admin if connected)
-    emit("receive_message", {"sender": sender, "message": message, "room": room}, room=room)
+    # send to everyone in the room
+    emit("receive_message", {"room": room, "sender": sender, "message": message}, room=room)
 
-    # notify admin dashboard of active customer
-    emit("active_customers", {"room": room}, broadcast=True)
+    # update admin active customers
+    emit("active_customers", {"customers": get_customers()}, broadcast=True)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host="0.0.0.0", port=port)
+    socketio.run(app, host="0.0.0.0", port=port, debug=True)
