@@ -13,9 +13,9 @@ body { font-family: Arial; margin:0; display:flex; height:100vh; }
 .chat-area { flex:1; display:flex; flex-direction:column; }
 .chat-header { background:#000; color:#fff; padding:12px; text-align:center; font-size:18px; }
 .chat-messages { flex:1; padding:10px; overflow-y:auto; }
-.chat-message { margin:5px 0; padding:8px 12px; border-radius:12px; display:inline-block; word-wrap: break-word; max-width:80%; }
-.customer { background:#f1f0f0; margin-right:auto; }
-.admin { background:#000; color:#fff; margin-left:auto; }
+.chat-message { margin:5px 0; padding:8px 12px; border-radius:12px; display:block; word-wrap: break-word; max-width:80%; clear:both; }
+.customer { background:#f1f0f0; float:left; }
+.admin { background:#000; color:#fff; float:right; }
 .chat-input { display:flex; padding:10px; border-top:1px solid #ddd; background:#fff; }
 .chat-input input { flex:1; padding:10px; border:1px solid #ccc; border-radius:20px; outline:none; font-size:14px; }
 .chat-input button { margin-left:8px; padding:10px 18px; border:none; border-radius:20px; background:#000; color:#fff; cursor:pointer; }
@@ -29,6 +29,8 @@ body { font-family: Arial; margin:0; display:flex; height:100vh; }
     color: #666;
     max-width: 80%;
     animation: fadeIn 0.3s ease-in;
+    float: left;
+    clear: both;
 }
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
@@ -197,8 +199,8 @@ socket.on("receive_message", data=>{
     messageHistory[room]=messageHistory[room]||[];
     messageHistory[room].push({message:data.message, sender:data.sender==="admin"?"admin":"customer"});
     
-    // Play notification sound if it's a customer message and not from the currently active customer
-    if(data.sender !== "admin" && room !== activeCustomer) {
+    // Play notification sound for ANY customer message (not admin messages)
+    if(data.sender !== "admin") {
         createNotificationSound();
     }
     
