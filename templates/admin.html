@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,34 +11,32 @@ body { font-family: Arial; margin:0; display:flex; height:100vh; }
 .customer-item { padding:10px; border-bottom:1px solid #ddd; cursor:pointer; }
 .customer-item.active { background:#000; color:#fff; }
 .chat-area { flex:1; display:flex; flex-direction:column; }
-.chat-header { background:#000; color:#fff; text-align:center; padding:15px; font-size:18px; }
+.chat-header { background:#000; color:#fff; padding:12px; text-align:center; font-size:18px; }
 .chat-messages { flex:1; padding:10px; overflow-y:auto; }
-.chat-message { display:inline-block; padding:8px 12px; margin:4px 0; border-radius:12px; max-width:70%; word-wrap:break-word; }
+.chat-message { margin:5px 0; padding:8px 12px; border-radius:12px; display:inline-block; word-wrap: break-word; max-width:80%; }
 .customer { background:#f1f0f0; margin-right:auto; }
 .admin { background:#000; color:#fff; margin-left:auto; }
-.chat-input { display:flex; padding:10px; border-top:1px solid #ddd; }
-.chat-input input { flex:1; padding:10px 12px; border-radius:20px; border:1px solid #ccc; outline:none; }
-.chat-input button { margin-left:8px; padding:10px 16px; border-radius:20px; border:none; background:#000; color:#fff; cursor:pointer; }
+.chat-input { display:flex; padding:10px; border-top:1px solid #ddd; background:#fff; }
+.chat-input input { flex:1; padding:10px; border:1px solid #ccc; border-radius:20px; outline:none; font-size:14px; }
+.chat-input button { margin-left:8px; padding:10px 18px; border:none; border-radius:20px; background:#000; color:#fff; cursor:pointer; }
+.chat-input button:active { transform: scale(0.97); }
 </style>
 </head>
 <body>
 
 <div class="sidebar">
-  <h2>Active Customers</h2>
-  <div id="customerList"></div>
+    <h2>Active Customers</h2>
+    <div id="customerList"></div>
 </div>
 
 <div class="chat-area">
-  <div class="chat-header">Shopify Customer Support</div>
-  <div class="chat-messages" id="messages"></div>
-  <div class="chat-input">
-    <input id="messageInput" type="text" placeholder="Type a message..." />
-    <button id="sendBtn">Send</button>
-  </div>
+    <div class="chat-header">Shopify Customer Support</div>
+    <div class="chat-messages" id="messages"></div>
+    <div class="chat-input">
+        <input id="messageInput" type="text" placeholder="Type a message...">
+        <button id="sendBtn">Send</button>
+    </div>
 </div>
-
-<!-- Notification sound -->
-<audio id="ping" src="https://www.soundjay.com/buttons/sounds/button-3.mp3" preload="auto"></audio>
 
 <script>
 const socket = io();
@@ -47,89 +45,76 @@ const customerListDiv = document.getElementById("customerList");
 const messagesDiv = document.getElementById("messages");
 const input = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
-const ping = document.getElementById("ping");
-
-// Stores chat history for all customers
 const messageHistory = {};
-// Stores all currently active customers
-const activeCustomers = new Set();
 
-// Render the customer sidebar
-function renderCustomers() {
-  customerListDiv.innerHTML = "";
-  [...activeCustomers].forEach(cust => {
-    const div = document.createElement("div");
-    div.classList.add("customer-item");
-    if(cust === activeCustomer) div.classList.add("active");
-    div.innerText = cust;
-    div.onclick = () => {
-      activeCustomer = cust;
-      renderCustomers();
-      renderMessages();
-    };
-    customerListDiv.appendChild(div);
-  });
+// Render customers
+function renderCustomers(customers){
+    customerListDiv.innerHTML="";
+    customers.forEach(cust=>{
+        const div=document.createElement("div");
+        div.classList.add("customer-item");
+        if(cust===activeCustomer) div.classList.add("active");
+        div.innerText=cust;
+        div.onclick=()=>{
+            activeCustomer=cust;
+            renderCustomers(customers);
+            renderMessages();
+            // load history if not present
+            socket.emit("join", { room: cust });
+        }
+        customerListDiv.appendChild(div);
+    });
 }
 
-// Render chat messages for currently selected customer
-function renderMessages() {
-  messagesDiv.innerHTML = "";
-  if(!activeCustomer || !messageHistory[activeCustomer]) return;
-  messageHistory[activeCustomer].forEach(msg => {
-    const div = document.createElement("div");
-    div.classList.add("chat-message", msg.sender);
-    div.innerText = msg.message;
-    messagesDiv.appendChild(div);
-  });
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+// Render messages
+function renderMessages(){
+    messagesDiv.innerHTML="";
+    if(!activeCustomer) return;
+    (messageHistory[activeCustomer]||[]).forEach(msg=>{
+        const div=document.createElement("div");
+        div.classList.add("chat-message", msg.sender==="admin"?"admin":"customer");
+        div.innerText=msg.message;
+        messagesDiv.appendChild(div);
+    });
+    messagesDiv.scrollTop=messagesDiv.scrollHeight;
 }
 
-// Send admin message
-sendBtn.addEventListener("click", () => {
-  if(!activeCustomer) return;
-  const msg = input.value.trim();
-  if(!msg) return;
-  messageHistory[activeCustomer] = messageHistory[activeCustomer] || [];
-  messageHistory[activeCustomer].push({message: msg, sender:"admin"});
-  renderMessages();
-  socket.emit("send_message", {room: activeCustomer, sender: "admin", message: msg});
-  input.value = "";
+// Send message
+sendBtn.addEventListener("click", ()=>{
+    if(!activeCustomer) return;
+    const msg = input.value.trim();
+    if(!msg) return;
+    messageHistory[activeCustomer]=messageHistory[activeCustomer]||[];
+    messageHistory[activeCustomer].push({message:msg, sender:"admin"});
+    renderMessages();
+    socket.emit("send_message", { room: activeCustomer, sender:"admin", message:msg });
+    input.value="";
 });
 
-input.addEventListener("keypress", e => { if(e.key==="Enter") sendBtn.click(); });
+input.addEventListener("keypress", e=>{ if(e.key==="Enter") sendBtn.click(); });
 
-// Receive full chat history from server when joining room
-socket.on("load_history", data => {
-  const room = data.room;
-  messageHistory[room] = data.messages || [];
-  activeCustomers.add(room);
-  if(!activeCustomer) activeCustomer = room;
-  renderCustomers();
-  renderMessages();
+// Load history from backend
+socket.on("load_history", data=>{
+    const room = data.room;
+    messageHistory[room]=data.messages.map(m=>({
+        message:m.message,
+        sender:m.sender==="admin"?"admin":"customer"
+    }));
+    if(room===activeCustomer) renderMessages();
 });
 
-// Receive a new message from a customer
-socket.on("receive_message", data => {
-  const room = data.room;
-  messageHistory[room] = messageHistory[room] || [];
-  messageHistory[room].push({message: data.message, sender: data.sender});
-  activeCustomers.add(room);
-
-  if(!activeCustomer) activeCustomer = room;
-  renderCustomers();
-  if(activeCustomer === room) renderMessages();
-
-  // Play notification if customer sent the message
-  if(data.sender !== "admin") ping.play();
+// Receive message
+socket.on("receive_message", data=>{
+    const room = data.room;
+    messageHistory[room]=messageHistory[room]||[];
+    messageHistory[room].push({message:data.message, sender:data.sender==="admin"?"admin":"customer"});
+    if(room===activeCustomer) renderMessages();
 });
 
-// Receive the updated active customer list
-socket.on("active_customers", data => {
-  data.customers.forEach(cust => activeCustomers.add(cust));
-  if(!activeCustomer && data.customers.length) activeCustomer = data.customers[0];
-  renderCustomers();
+// Active customers
+socket.on("active_customers", data=>{
+    renderCustomers(data.customers);
 });
 </script>
-
 </body>
 </html>
